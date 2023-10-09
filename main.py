@@ -28,133 +28,17 @@ df.drop('attribution',axis=1,inplace=True)
 
 V_s = vocab_source = 2001
 V_t = vocab_target = 5001
-Dataset = TranslationDataset(df,V_s,V_t,from_file=True)
+dataset = TranslationDataset(df,V_s,V_t,from_file=True)
 
 #%%
 E = 128
 H = 256
 B = 256
 
-# %%
-
-# step 2: define encoder
-class Encoder(nn.Module):
-    def __init__(self,V,E,H):
-        super(Encoder, self).__init__()
-        self.embedding = nn.Embedding(V,E,max_norm=1, scale_grad_by_freq=True)
-        self.gru = nn.GRU(E,H,batch_first=True,bidirectional=True)
-
-    def forward(self, x):
-        B,T = x.shape
-        mask_lens = (x!=0).sum(1).to(torch.device('cpu'))
-        emb = self.embedding(x)
-        x_pack = pack_padded_sequence(emb,mask_lens,batch_first=True,enforce_sorted=False)
-        all_h_packed,_ = self.gru(x_pack)
-        all_h, _ = pad_packed_sequence(all_h_packed,batch_first=True)
-        return all_h
-        # return all hidden states
-
-    def evaluate(self,x):
-        with torch.no_grad():
-            return self.forward(x)
-# %%
-# create AttentionGRU
-class AttentionGRU(nn.Module):
-    
-    def __init__(self,E,H):
-        super(AttentionGRU, self).__init__()
-
-        # weights for embedding
-        self.input_r = nn.Linear(E,H)
-        self.input_z = nn.Linear(E,H)
-        self.input = nn.Linear(E,H)
-        
-        # weights for decoder hidden states
-        self.hidden_r = nn.Linear(H,H)
-        self.hidden_z = nn.Linear(H,H)
-        self.hidden = nn.Linear(H,H)
-
-        # for context vector (c)
-        self.context_r = nn.Linear(2*H,H)
-        self.context_z = nn.Linear(2*H,H)
-        self.context = nn.Linear(2*H,H)
-
-        # weights to calculate alpha
-        self.dec_projection = nn.Linear(H,H)
-        self.enc_projection = nn.Linear(2*H,H)
-        self.energy_projection = nn.Linear(H,1,bias=False)
-
-        # weight initialization
-        self.init_weights()
-
-    
-    def init_weights(self):
-        for name, param in self.named_parameters():
-            if 'bias' in name:
-                init.constant_(param, 0.0)
-            elif 'weight' in name:
-                init.kaiming_normal_(param,nonlinearity='tanh',a=0.577) # dividing by root 3
-
-    def forward(self, emb, all_h_enc,s_prev=None):
-        # all_h_enc dimension will be B,Tx,H so if I need the mask
-        enc_mask = torch.all((all_h_enc !=0),dim=-1,keepdim=True)
-        B,T,E = emb.shape
-        H = self.hidden.in_features
-        s_prev = torch.zeros(B,H).to(device) if s_prev is None else s_prev
-        encoder_energies = self.enc_projection(all_h_enc)
-        all_hidden = torch.zeros(B,T,H).to(device)
-        for t in range(T):
-            # calculate the energies
-            et = self.energy_projection(self.dec_projection(s_prev).unsqueeze(1) + encoder_energies)
-            # correction for padded hts
-            et = et.masked_fill(~enc_mask,-torch.inf)
-            # calculate the alphas
-            at = et.softmax(dim=-2)
-            # calculate the context vector
-            ct = (all_h_enc*at).sum(-2)
-            emb_cur = emb[:,t,:]
-            rt = torch.sigmoid(self.input_r(emb_cur) + self.hidden_r(s_prev) + self.context_r(ct))
-            zt = torch.sigmoid(self.input_z(emb_cur) + self.hidden_z(s_prev) + self.context_z(ct))
-            candidate_s = torch.tanh(self.input(emb_cur) + self.hidden(rt*s_prev) + self.context(ct))
-            st = (1-zt)*candidate_s + zt*s_prev
-            s_prev = st
-            all_hidden[:,t,:] = st
-        return all_hidden,st
-
-    def evaluate(self,emb,all_h_enc,s_prev):
-        with torch.no_grad():
-            return self.forward(emb,all_h_enc,s_prev)
-        
-# %%
-
-# decoder time
-
-class Decoder(nn.Module):
-    def __init__(self, V_t, E, H):
-        super(Decoder, self).__init__()
-        self.embedding = nn.Embedding(V_t, E, max_norm=1, scale_grad_by_freq=True)
-        self.attention = AttentionGRU(E,H)
-        self.fc = nn.Linear(H,V_t)
-
-        init.normal_(self.fc.weight,mean=0,std=0.1)
-        
-    def forward(self, x, all_hidden_enc):
-        emb = self.embedding(x) # B,T,V 
-        all_hidden, _ = self.attention(emb,all_hidden_enc) # B,T,H
-        out = self.fc(all_hidden) # B,T,V
-        return out
-    
-    def evaluate(self,x,all_hidden_enc,s_prev=None):
-        with torch.no_grad():
-            emb = self.embedding(x) # B,T,V but T will be 1
-            all_h_dec, st = self.attention.evaluate(emb,all_hidden_enc,s_prev)
-            out = self.fc(all_h_dec) # B,T,V but again T will be 1
-            return out,st
-
 
 # %%
 class TranslationNN(nn.Module):
-    def __init__(self,V_s,V_t,E,H):
+def __init__(self,V_s,V_t,E,H):
         super(TranslationNN, self).__init__()
         self.encoder = Encoder(V_s,E,H)
         self.decoder = Decoder(V_t,E,H)

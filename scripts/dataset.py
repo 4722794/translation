@@ -27,7 +27,7 @@ class TranslationDataset(Dataset):
     def __init__(self, path,v_source,v_target,from_file=False):
         super().__init__()
         self.kernel = {}
-        self.X_s, self.X_t, self.Y = self.codex(path,v_source,v_target,from_file)
+        self.X_s, self.X_t = self.codex(path,v_source,v_target,from_file)
 
     def __len__(self):
         return len(self.X_s.data)
@@ -42,13 +42,10 @@ class TranslationDataset(Dataset):
         df = self.read_file(path)
 
         s_tokens = self.create_tokens(df.iloc[:,0],'source',v_source,token_en,from_file)
-        X_source = pad_sequence([torch.tensor(seq) for seq in s_tokens],batch_first=True)
         
         t_tokens = self.create_tokens(df.iloc[:,1],'target',v_target,token_fr,from_file)
-        X_target = pad_sequence([torch.tensor(seq[:-1]) for seq in t_tokens],batch_first=True)
-        Y_target = pad_sequence([torch.tensor(seq[1:]) for seq in t_tokens],batch_first=True)
 
-        return X_source,X_target,Y_target
+        return s_tokens,t_tokens
     
     def create_tokens(self,data,datatype,vocab_size,tokenizer,from_file):
 
