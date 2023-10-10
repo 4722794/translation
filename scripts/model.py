@@ -29,9 +29,9 @@ class Encoder(nn.Module):
         with torch.no_grad():
             return self.forward(x)
         
-enc = Encoder(8,4,2)
-x = [[4,2,2],[3,5]]
-out = enc(x)
+# enc = Encoder(8,4,2)
+# x = [[4,2,2],[3,5]]
+# out = enc(x)
 # %%
 # create AttentionGRU
 
@@ -57,14 +57,14 @@ class AddAttention(nn.Module):
 
         return context, weights 
 
-attn = AddAttention(4)
-q = torch.randn(4,1,4)
-k = torch.randn(4,2,8)
-out = attn(q,k)
+# attn = AddAttention(4)
+# q = torch.randn(4,1,4)
+# k = torch.randn(4,2,8)
+# out = attn(q,k)
 #%%
 
 class Decoder(nn.Module):
-    def __init__(self,E,V,H):
+    def __init__(self,V,E,H):
         super().__init__()
         self.embedding = nn.Embedding(V,E)
         self.attention = AddAttention(H)
@@ -73,7 +73,8 @@ class Decoder(nn.Module):
         self.initialW = nn.Parameter(torch.randn(H,H))
 
     def forward(self,x,hidden_encoder):
-        x = pad_sequence((torch.tensor(i) for i in x),batch_first=True)
+        # made a change to be stashed
+        x = pad_sequence((torch.tensor(i[:-1]) for i in x),batch_first=True)
         H = self.gru.hidden_size
         x_emb = self.embedding(x)
         B,T,E = x_emb.shape
@@ -90,32 +91,8 @@ class Decoder(nn.Module):
 
         return out
 
-x = [[1,2,3],[2,5]]
-all_h = torch.randn(2,4,8)
-dec = Decoder(5,10,4)
-out = dec(x,all_h)
+# x = [[1,2,3],[2,5]]
+# all_h = torch.randn(2,4,8)
+# dec = Decoder(5,10,4)
+# out = dec(x,all_h)
 #%%
-# decoder time
-
-# class Decoder(nn.Module):
-#     def __init__(self, V_t, E, H):
-#         super(Decoder, self).__init__()
-#         self.embedding = nn.Embedding(V_t, E, max_norm=1, scale_grad_by_freq=True)
-#         self.attention = AttentionGRU(E,H)
-#         self.fc = nn.Linear(H,V_t)
-
-#         init.normal_(self.fc.weight,mean=0,std=0.1)
-        
-#     def forward(self, x, all_hidden_enc):
-#         emb = self.embedding(x) # B,T,V 
-#         all_hidden, _ = self.attention(emb,all_hidden_enc) # B,T,H
-#         out = self.fc(all_hidden) # B,T,V
-#         return out
-    
-#     def evaluate(self,x,all_hidden_enc,s_prev=None):
-#         with torch.no_grad():
-#             emb = self.embedding(x) # B,T,V but T will be 1
-#             all_h_dec, st = self.attention.evaluate(emb,all_hidden_enc,s_prev)
-#             out = self.fc(all_h_dec) # B,T,V but again T will be 1
-#             return out,st
-

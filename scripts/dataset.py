@@ -33,7 +33,7 @@ class TranslationDataset(Dataset):
         return len(self.X_s.data)
 
     def __getitem__(self, index):
-        return self.X_s[index], self.X_t[index], self.Y[index]
+        return self.X_s[index], self.X_t[index]
     
     def codex(self,path,v_source,v_target,from_file):
         # read the file
@@ -45,7 +45,7 @@ class TranslationDataset(Dataset):
         
         t_tokens = self.create_tokens(df.iloc[:,1],'target',v_target,token_fr,from_file)
 
-        return s_tokens,t_tokens
+        return s_tokens.values,t_tokens.values
     
     def create_tokens(self,data,datatype,vocab_size,tokenizer,from_file):
 
