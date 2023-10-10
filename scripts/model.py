@@ -6,6 +6,9 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_se
 import torch.optim as optim
 import numpy as np
 
+BOS_token = 1
+EOS_token = 2
+
 
 # step 2: define encoder
 class Encoder(nn.Module):
@@ -26,7 +29,7 @@ class Encoder(nn.Module):
         return all_h
         # return all hidden states
 
-    def evaluate(self, x):
+    def eval(self, x):
         with torch.no_grad():
             return self.forward(x)
 
@@ -95,9 +98,51 @@ class Decoder(nn.Module):
 
         return out
 
+    def eval(self, x, hidden_encoder, s_prev):
+        with torch.no_grad():
+            c_t, weights = self.attention(s_prev, hidden_encoder)
+            x_in = torch.cat((x, c_t), dim=-1)
+            s_prev, _ = self.gru(x_in)
+            out = self.out(s_prev)
+
+        return out, s_prev, weights
+
 
 # x = [[1,2,3],[2,5]]
 # all_h = torch.randn(2,4,8)
 # dec = Decoder(5,10,4)
 # out = dec(x,all_h)
 # %%
+
+
+class TranslationNN(nn.Module):
+    def __init__(self, V_s, V_t, E, H):
+        super(TranslationNN, self).__init__()
+        self.encoder = Encoder(V_s, E, H)
+        self.decoder = Decoder(V_t, E, H)
+
+    def forward(self, x_s, x_t, device):
+        all_h_enc = self.encoder(x_s)
+        out = self.decoder(x_t, all_h_enc, device)
+        return out
+
+    def eval(self, x_s, MAXLEN=50, device=torch.device("cpu")):
+        with torch.no_grad():
+            hidden_encoder = self.encoder.eval(x_s)
+            B, T, H = hidden_encoder.shape
+            H = H // 2  # using bidir
+            x_t = torch.ones(B, 1).long().to(device)
+            s_prev = hidden_encoder[:, :1, H:] @ self.decoder.initialW
+            counter = 0
+            outs = []
+            weights = []
+            while (torch.all(torch.any(x_t == EOS_token, dim=0), dim=0).item()) or (
+                counter < MAXLEN
+            ):
+                out, s_prev, weight = self.decoder.eval(x_t, hidden_encoder, s_prev)
+                probs = F.softmax(out, dim=-1)
+                x_t = torch.argmax(probs, axis=-1)
+                outs.append(x_t)
+                weights.append(weight)
+
+            return outs, weights
