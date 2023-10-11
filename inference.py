@@ -14,10 +14,12 @@ from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score
+from scripts.utils import calculate_bleu_score, token_to_sentence, evaluate_show_attention
 from dotenv import load_dotenv
 import os
 from torchtext.data.metrics import bleu_score
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
 # %%
@@ -109,14 +111,34 @@ for x_s, x_t, y in test_loader:
 mean_score = torch.tensor(scores).mean()
 
 # %%
+# sample inference
 
+source_sentences = [
+    "Can you walk?",
+    "What is love?",
+    "I am very happy",
+    "Can you give me a cheese omlette?",
+    "I dream in french.",
+    "I saw you cooking.",
+    "He says he met my mother.",
+    "Would you lend me some money?",
+    "I'm looking forward to seeing you next Sunday.",
+    "The war between the two countries ended with a big loss for both sides.",
+    "The only thing that really matters is whether or not you did your best.",
+    "The police compared the fingerprints on the gun with those on the door.",
+    "The English language is undoubtedly the easiest and at the same time the most efficient means of international communication.",
+    "I only eat the vegetables that I grow myself.",
+]
 
-detoken_en = MosesDetokenizer(lang="en")
-detoken_fr = MosesDetokenizer(lang="fr")
+x_test = dataset.from_sentence_list('source',source_sentences)
 
-preds = [detoken_fr.detokenize(p) for p in preds]
-targets = [detoken_fr.detokenize(a) for a in targets]
-# sentences = [detoken_en.detokenize(s) for s in sentences]
+outs,weights = model.evaluate(x_test)
+
+preds = token_to_sentence(outs,dataset,EOS_token,MosesDetokenizer(lang='fr')) 
 
 
 # %%
+eg_sent = source_sentences[0]
+
+evaluate_show_attention(model,eg_sent,dataset,EOS_token)
+#%%

@@ -111,4 +111,19 @@ class TranslationDataset(Dataset):
         s = s.str.replace('\u202f|\xa0',' ',regex=False).str.lower()
         s =  s.str.replace('[^a-zA-Z0-9àâäéèêëîïôöùûüÿç\-!\'?,. ]','',regex=True).str.lower()
         return s
+    
+    def from_sentence(self,datatype,sentence):
+        if datatype.lower()=='source':
+            sentence = sentence.lower() + ' EOS'
+        else:
+            sentence = 'BOS ' + sentence + ' EOS'
+        tokens = token_en.tokenize(sentence)
+        itokens = [self.kernel[datatype].stoi.get(i,self.kernel[datatype].stoi['OOV']) for i in tokens]
+        return torch.Tensor(itokens).long().to(device)
+    
+    def from_sentence_list(self,datatype,sentlist):
+        itokens = [self.from_sentence(datatype,s) for s in sentlist]
+        return pad_sequence(itokens,batch_first=True)
+        
+
 #%%

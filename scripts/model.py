@@ -55,7 +55,9 @@ class AddAttention(nn.Module):
         """
         scores = self.Va(torch.tanh(self.Wa(query) + self.Ua(keys))).squeeze(-1)
         scores = scores.unsqueeze(1)
-
+        # fix the weights
+        enc_mask = torch.all((keys==0),dim=-1).unsqueeze(1)
+        scores.masked_fill(enc_mask,-torch.inf)
         weights = F.softmax(scores, dim=-1)  # B,1,Tx
         context = weights @ keys  # B,1,H
 
@@ -127,7 +129,7 @@ class TranslationNN(nn.Module):
         out = self.decoder(x_t, all_h_enc, device)
         return out
 
-    def evaluate(self, x_s, MAXLEN=20, device=torch.device("cpu")):
+    def evaluate(self, x_s, MAXLEN=30, device=torch.device("cpu")):
         with torch.no_grad():
             hidden_encoder = self.encoder.evaluate(x_s)
             B, T, H = hidden_encoder.shape
@@ -136,15 +138,15 @@ class TranslationNN(nn.Module):
             s_prev = hidden_encoder[:, :1, H:] @ self.decoder.initialW
             counter = 0
             outs = torch.zeros(B, MAXLEN)
-            weights = []
+            weights = torch.zeros(B,MAXLEN,T)
             while (
-                not torch.all(torch.any(outs == EOS_token, dim=0), dim=0).item()
+                not torch.all(torch.any(outs == EOS_token, dim=1), dim=0).item()
             ) and (counter < MAXLEN):
-                outs[:, counter] = x_t.squeeze(1)
                 out, s_prev, weight = self.decoder.evaluate(x_t, hidden_encoder, s_prev)
                 probs = F.softmax(out, dim=-1)
                 x_t = torch.argmax(probs, axis=-1)
-                weights.append(weight)
+                outs[:, counter] = x_t.squeeze(1)
+                weights[:,counter,:] = weight.squeeze(1)
                 counter += 1
 
         return outs, weights
