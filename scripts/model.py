@@ -29,7 +29,7 @@ class Encoder(nn.Module):
         return all_h
         # return all hidden states
 
-    def eval(self, x):
+    def evaluate(self, x):
         with torch.no_grad():
             return self.forward(x)
 
@@ -98,7 +98,7 @@ class Decoder(nn.Module):
 
         return out
 
-    def eval(self, x, hidden_encoder, s_prev):
+    def evaluate(self, x, hidden_encoder, s_prev):
         with torch.no_grad():
             x_emb = self.embedding(x)
             c_t, weights = self.attention(s_prev, hidden_encoder)
@@ -127,24 +127,24 @@ class TranslationNN(nn.Module):
         out = self.decoder(x_t, all_h_enc, device)
         return out
 
-    def eval(self, x_s, MAXLEN=20, device=torch.device("cpu")):
+    def evaluate(self, x_s, MAXLEN=20, device=torch.device("cpu")):
         with torch.no_grad():
-            hidden_encoder = self.encoder.eval(x_s)
+            hidden_encoder = self.encoder.evaluate(x_s)
             B, T, H = hidden_encoder.shape
             H = H // 2  # using bidir
             x_t = torch.ones(B, 1).long().to(device)
             s_prev = hidden_encoder[:, :1, H:] @ self.decoder.initialW
             counter = 0
-            outs = []
+            outs = torch.zeros(B, MAXLEN)
             weights = []
-            while (torch.all(torch.any(x_t == EOS_token, dim=0), dim=0).item()) or (
-                counter < MAXLEN
-            ):
-                out, s_prev, weight = self.decoder.eval(x_t, hidden_encoder, s_prev)
+            while (
+                not torch.all(torch.any(outs == EOS_token, dim=0), dim=0).item()
+            ) and (counter < MAXLEN):
+                outs[:, counter] = x_t.squeeze(1)
+                out, s_prev, weight = self.decoder.evaluate(x_t, hidden_encoder, s_prev)
                 probs = F.softmax(out, dim=-1)
                 x_t = torch.argmax(probs, axis=-1)
-                outs.append(x_t)
                 weights.append(weight)
-                counter+=1
+                counter += 1
 
         return outs, weights

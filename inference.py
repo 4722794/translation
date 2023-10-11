@@ -21,7 +21,7 @@ from torchtext.data.metrics import bleu_score
 
 
 # %%
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 token_en = MosesTokenizer(lang="en")
 token_fr = MosesTokenizer(lang="fr")
@@ -61,7 +61,7 @@ model = TranslationNN(
 )
 model.to(device)
 loss_fn = nn.CrossEntropyLoss(reduction="none")
-checkpoint = torch.load(checkpoint_path,map_location=device)
+checkpoint = torch.load(checkpoint_path, map_location=device)
 # load checkpoint details
 model.load_state_dict(checkpoint["nn_state"])
 
@@ -77,21 +77,20 @@ def collate_fn(batch):
     return x_s.long(), x_t.long(), y.long()
 
 
-_,val_set, test_set = random_split(dataset, [0.9, 0.05,0.05])
+_, val_set, test_set = random_split(dataset, [0.9, 0.05, 0.05])
 
-#%%
-val_loader = DataLoader(
-    val_set, batch_size=config["batch_size"], collate_fn=collate_fn
-)
+# %%
+val_loader = DataLoader(val_set, batch_size=config["batch_size"], collate_fn=collate_fn)
 
 test_loader = DataLoader(
     test_set, batch_size=config["batch_size"], collate_fn=collate_fn
 )
 
 
-#%%
+# %%
 # check the loss ball park
-for x_s,x_t,y in val_loader:
+for x_s, x_t, y in val_loader:
+    x_s, x_t, y = x_s.to(device), x_t.to(device), y.to(device)
     break
 with torch.no_grad():
     out = model(x_s, x_t, device)
@@ -101,13 +100,16 @@ with torch.no_grad():
     loss = loss[mask].mean()
 # %%
 scores = []
-for x_s,x_t,y in test_loader:
-    break
-# outs,weights = model.eval(x_s)
-# score = calculate_bleu_score(outs, x_t, dataset, EOS_token)
-# scores.append(score)
+for x_s, x_t, y in test_loader:
+    x_s, x_t = x_s.to(device), x_t.to(device)
+    outs, weights = model.evaluate(x_s, device=device)
+    score = calculate_bleu_score(outs, x_t, dataset, EOS_token)
+    scores.append(score)
+
+mean_score = torch.tensor(scores).mean()
 
 # %%
+
 
 detoken_en = MosesDetokenizer(lang="en")
 detoken_fr = MosesDetokenizer(lang="fr")
