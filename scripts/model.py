@@ -100,8 +100,9 @@ class Decoder(nn.Module):
 
     def eval(self, x, hidden_encoder, s_prev):
         with torch.no_grad():
+            x_emb = self.embedding(x)
             c_t, weights = self.attention(s_prev, hidden_encoder)
-            x_in = torch.cat((x, c_t), dim=-1)
+            x_in = torch.cat((x_emb, c_t), dim=-1)
             s_prev, _ = self.gru(x_in)
             out = self.out(s_prev)
 
@@ -126,7 +127,7 @@ class TranslationNN(nn.Module):
         out = self.decoder(x_t, all_h_enc, device)
         return out
 
-    def eval(self, x_s, MAXLEN=50, device=torch.device("cpu")):
+    def eval(self, x_s, MAXLEN=20, device=torch.device("cpu")):
         with torch.no_grad():
             hidden_encoder = self.encoder.eval(x_s)
             B, T, H = hidden_encoder.shape
@@ -144,5 +145,6 @@ class TranslationNN(nn.Module):
                 x_t = torch.argmax(probs, axis=-1)
                 outs.append(x_t)
                 weights.append(weight)
+                counter+=1
 
-            return outs, weights
+        return outs, weights

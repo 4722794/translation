@@ -68,7 +68,7 @@ model = TranslationNN(
 )
 model.to(device)
 optim = AdamW(model.parameters(), lr=config["lr"])
-loss_fn = nn.CrossEntropyLoss(reduction="none")
+
 if checkpoint_path.exists():
     checkpoint = torch.load(checkpoint_path)
     # load checkpoint details
