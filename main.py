@@ -2,16 +2,13 @@
 # %%
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pad_sequence
 import torch.nn.init as init
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, random_split
 import torch.nn.functional as F
 from torch.optim import Adam, AdamW
 from torch.nn.utils import clip_grad_norm_
-from torchtext.data.metrics import bleu_score
-from sacremoses import MosesTokenizer, MosesDetokenizer
 import pandas as pd
-from collections import Counter, namedtuple
 from pathlib import Path
 import numpy as np
 from tqdm import tqdm
@@ -34,7 +31,7 @@ data_path = root_path / "data"
 checkpoint_path = Path("data/checkpoint.pt")
 
 config = dict(
-    epochs=50,
+    epochs=100,
     batch_size=512,
     learning_rate=3e-4,
     vocab_source=5001,
@@ -46,12 +43,9 @@ config = dict(
 )
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
-dataset = TranslationDataset(
-    df, from_file=True
-)
+dataset = TranslationDataset(df, from_file=True)
 
 
-# %%
 # %%
 # instantiate params
 model = TranslationNN(
@@ -62,7 +56,7 @@ model = TranslationNN(
 )
 model.to(device)
 optim = AdamW(model.parameters(), lr=config["lr"])
-loss_fn = nn.CrossEntropyLoss(reduction='none')
+loss_fn = nn.CrossEntropyLoss(reduction="none")
 if checkpoint_path.exists():
     checkpoint = torch.load(checkpoint_path)
     # load checkpoint details
@@ -78,7 +72,7 @@ else:
         opt_state=optim.state_dict(),
     )
     torch.save(checkpoint, checkpoint_path)
-#%%
+# %%
 # make dataloaders
 
 
@@ -106,7 +100,7 @@ valid_loader = DataLoader(
 # wandb section
 wandb.login(key=api_key)
 
-run = wandb.init(project="français", name="first attention", config=config)
+run = wandb.init(project="français", name="SPecial attention", config=config)
 log_table = wandb.Table(columns=["epoch", "train_loss", "val_loss"])
 
 wandb.watch(model, log_freq=100)
@@ -179,3 +173,5 @@ for epoch in range(epoch, epoch + num_epochs):
         checkpoint["opt_state"] = optim.state_dict()
         torch.save(checkpoint, checkpoint_path)
 # %%
+
+wandb.finish()
