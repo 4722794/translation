@@ -9,7 +9,6 @@ import numpy as np
 BOS_token = 1
 EOS_token = 2
 
-
 # step 2: define encoder
 class Encoder(nn.Module):
     def __init__(self, V, E, H):

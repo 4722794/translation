@@ -29,35 +29,29 @@ api_key = os.getenv("WANDB_API_KEY")
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-token_en = MosesTokenizer(lang="en")
-token_fr = MosesTokenizer(lang="fr")
-
-df = pd.read_csv(
-    "data/fra.txt", sep="\t", header=None, names=["en", "fr", "attribution"]
-)
-df.drop("attribution", axis=1, inplace=True)
-
+root_path = Path(__file__).resolve().parents[0]
+data_path = root_path / "data"
 checkpoint_path = Path("data/checkpoint.pt")
 
 config = dict(
     epochs=50,
     batch_size=512,
     learning_rate=3e-4,
-    vocab_source=2001,
+    vocab_source=5001,
     vocab_target=5001,
     embedding_size=128,
     hidden_size=64,
     device=device,
     lr=3e-4,
 )
+
+df = pd.read_csv(f"{data_path}/fra-eng.csv")
 dataset = TranslationDataset(
-    df, config["vocab_source"], config["vocab_target"], from_file=True
+    df, from_file=True
 )
 
 
 # %%
-
-
 # %%
 # instantiate params
 model = TranslationNN(
@@ -68,7 +62,7 @@ model = TranslationNN(
 )
 model.to(device)
 optim = AdamW(model.parameters(), lr=config["lr"])
-
+loss_fn = nn.CrossEntropyLoss(reduction='none')
 if checkpoint_path.exists():
     checkpoint = torch.load(checkpoint_path)
     # load checkpoint details
@@ -84,7 +78,7 @@ else:
         opt_state=optim.state_dict(),
     )
     torch.save(checkpoint, checkpoint_path)
-
+#%%
 # make dataloaders
 
 
@@ -112,7 +106,8 @@ valid_loader = DataLoader(
 # wandb section
 wandb.login(key=api_key)
 
-wandb.init(project="français", name="first attention", config=config)
+run = wandb.init(project="français", name="first attention", config=config)
+log_table = wandb.Table(columns=["epoch", "train_loss", "val_loss"])
 
 wandb.watch(model, log_freq=100)
 
@@ -148,7 +143,6 @@ for epoch in range(epoch, epoch + num_epochs):
     # get the averaged training loss
     train_loss = train_loss.mean()
     print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
-    v
 
     for c, (x_s, x_t, y) in enumerate(valid_loader):
         with torch.no_grad():
@@ -169,7 +163,15 @@ for epoch in range(epoch, epoch + num_epochs):
     # get the averaged validation loss
     eval_loss = eval_loss.mean()
     print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f}")
-    wandb.log({"eval_loss": eval_loss})
+    log_table.add_data(epoch + 1, train_loss, eval_loss)
+    run.log(
+        dict(
+            epoch=epoch + 1,
+            train_loss=train_loss,
+            val_loss=eval_loss,
+            training_log=log_table,
+        )
+    )
     if checkpoint_path.exists() and eval_loss < checkpoint["loss"]:
         checkpoint["epoch"] = epoch
         checkpoint["loss"] = eval_loss

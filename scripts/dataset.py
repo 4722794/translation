@@ -1,33 +1,39 @@
+#%%
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 from torch.optim import Adam
-from sacremoses import MosesTokenizer
 import pandas as pd
 from collections import namedtuple, Counter
 from pathlib import Path
 import ast
 import numpy as np
 import pickle
+import sentencepiece as spm
 
-
-# %%
+root_path = Path(__file__).resolve().parents[1]
+data_path = root_path / 'data'
+s_tokenizer_path = root_path/ 'data' / 'tokenizer_en.model'
+t_tokenizer_path = root_path/ 'data' / 'tokenizer_fr.model'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-token_en = MosesTokenizer(lang='en')
-token_fr = MosesTokenizer(lang='fr')
+token_s,token_t = spm.SentencePieceProcessor(), spm.SentencePieceProcessor()
+token_s.Load(str(s_tokenizer_path))
+token_t.Load(str(t_tokenizer_path))
 
-Kernel = namedtuple(f'Kernel',['vocab','stoi','itos','total_vocab'])
 
 #%%
 
 class TranslationDataset(Dataset):
     
-    def __init__(self, path,v_source,v_target,from_file=False):
+    def __init__(self,df,from_file=False):
         super().__init__()
-        self.kernel = {}
-        self.X_s, self.X_t = self.codex(path,v_source,v_target,from_file)
+        self.sp_s, self.sp_t = token_s, token_t
+        self.sp_s.SetEncodeExtraOptions('eos')
+        self.sp_t.SetEncodeExtraOptions('bos:eos')
+        df = self.read_file(df)
+        self.X_s, self.X_t = self.codex(df,from_file)
 
     def __len__(self):
         return len(self.X_s.data)
@@ -35,66 +41,21 @@ class TranslationDataset(Dataset):
     def __getitem__(self, index):
         return self.X_s[index], self.X_t[index]
     
-    def codex(self,path,v_source,v_target,from_file):
+    def codex(self,df,from_file=False):
         # read the file
+        if from_file:
+            s_tokens = pd.read_csv(f'{data_path}/source.csv', header=None)[0].apply(ast.literal_eval)
+            t_tokens = pd.read_csv(f'{data_path}/target.csv', header=None)[0].apply(ast.literal_eval)
 
-
-        df = self.read_file(path)
-
-        s_tokens = self.create_tokens(df.iloc[:,0],'source',v_source,token_en,from_file)
-        
-        t_tokens = self.create_tokens(df.iloc[:,1],'target',v_target,token_fr,from_file)
-
+        else:
+            s_tokens = df.iloc[:,0].apply(lambda x: self.sp_s.EncodeAsIds(x))
+            s_tokens.to_csv(f'{data_path}/source.csv',index=False,header=False)
+            t_tokens = df.iloc[:,1].apply(lambda x: self.sp_t.EncodeAsIds(x))
+            t_tokens.to_csv(f'{data_path}/target.csv',index=False,header=False)
         return s_tokens.values,t_tokens.values
     
-    def create_tokens(self,data,datatype,vocab_size,tokenizer,from_file):
 
-        if from_file:
-            with open(f'data/{datatype}.pkl','rb') as f:
-                self.kernel[f'{datatype}'] = kernel = pickle.load(f)
-            itokens = pd.read_csv(f'data/{datatype}.csv', header=None)[0].apply(ast.literal_eval)
-        else:
-            self.kernel[f'{datatype}'] = kernel = self.create_vocab(vocab_size,data,tokenizer,datatype)
-            if datatype.lower()=='source':
-                data = data.apply(lambda x: x + ' EOS')
-            else:
-                data = data.apply(lambda x: 'BOS ' + x + ' EOS')
-            # the tokenizer is currently from moses
-            stokens = data.apply(lambda x: tokenizer.tokenize(x))
-            itokens = stokens.apply(lambda x: [kernel.stoi.get(i,kernel.stoi['OOV']) for i in x])
-            itokens.to_csv(f'data/{datatype}.csv',header=False,index=None)
-        return itokens
-
-    def create_vocab(self,vocab_size,s,tokenizer,datatype):
-        """
-        s: This is a pandas series object
-        """
-        # split it up
-        s_words = s.apply(lambda x: tokenizer.tokenize(x))
-        s_words = s_words.explode().value_counts()
-        word_counts = Counter(s_words.to_dict())
-        total_vocab = len(word_counts)
-        vocab = [k for k,c in word_counts.most_common(vocab_size-4)]
-        vocab+= ['OOV']
-        stoi = {token:i for i,token in enumerate(vocab,3)}
-        stoi['PAD'] = 0
-        stoi['BOS'] = 1
-        stoi['EOS'] = 2
-        itos = {i:token for token,i in stoi.items()}
-        k = Kernel(vocab,stoi,itos,total_vocab)
-        with open(f'data/{datatype}.pkl','wb') as f:
-            pickle.dump(k,f)
-        return k
-
-    def read_file(self,path):
-        if isinstance(path,Path):
-            df = pd.read_csv(path)
-        elif isinstance(path,pd.DataFrame):
-            df = path
-        else:
-            raise FileNotFoundError(f'{path} not a valid path or dataframe')
-            
-        
+    def read_file(self,df):
         df.iloc[:,0] = self.preprocess(df.iloc[:,0])
         df.iloc[:,1] = self.preprocess(df.iloc[:,1])
         df.replace(r"^\s*$",np.nan,regex=True,inplace=True)
@@ -113,13 +74,10 @@ class TranslationDataset(Dataset):
         return s
     
     def from_sentence(self,datatype,sentence):
-        if datatype.lower()=='source':
-            sentence = sentence.lower() + ' EOS'
-        else:
-            sentence = 'BOS ' + sentence + ' EOS'
-        tokens = token_en.tokenize(sentence)
-        itokens = [self.kernel[datatype].stoi.get(i,self.kernel[datatype].stoi['OOV']) for i in tokens]
-        return torch.Tensor(itokens).long().to(device)
+
+        tokenizer = self.sp_s if datatype=='source' else self.sp_t
+        tokens = tokenizer.EncodeAsIds(sentence)
+        return torch.Tensor(tokens).long().to(device)
     
     def from_sentence_list(self,datatype,sentlist):
         itokens = [self.from_sentence(datatype,s) for s in sentlist]
@@ -127,3 +85,8 @@ class TranslationDataset(Dataset):
         
 
 #%%
+if __name__ == '__main__':
+    df = pd.read_csv(f'{data_path}/fra-eng.csv')
+    dataset = TranslationDataset(df,from_file=False)
+    
+# %%
