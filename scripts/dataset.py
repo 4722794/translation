@@ -76,7 +76,7 @@ class TranslationDataset(Dataset):
     def from_sentence(self,datatype,sentence):
 
         tokenizer = self.sp_s if datatype=='source' else self.sp_t
-        tokens = tokenizer.EncodeAsIds(sentence)
+        tokens = tokenizer.EncodeAsIds(sentence.lower())
         return torch.Tensor(tokens).long().to(device)
     
     def from_sentence_list(self,datatype,sentlist):

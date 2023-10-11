@@ -23,7 +23,7 @@ def showAttention(input_words,output_words, attentions):
     # set up axes
 
     ax.set_xticklabels([''] + input_words, rotation=90)
-    ax.set_yticklabels(['']+output_words)
+    ax.set_yticklabels([''] + output_words)
 
     # show label at every tick
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
@@ -35,41 +35,30 @@ def showAttention(input_words,output_words, attentions):
 
 # bleu score
 
-
 def calculate_bleu_score(outs, x_t, dataset, EOS_token):
     preds = outs.to("cpu")
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
-    out_list = preds.tolist()
-    preds = [
-        [dataset.kernel["target"].itos[i] for i in sublist if i != 0]
-        for sublist in out_list
-    ]
-    targets = [
-        [dataset.kernel["target"].itos[i.item()] for i in sublist if i not in [0, 1]]
-        for sublist in x_t.to("cpu")
-    ]
-    targets = [[i] for i in targets]
+    out_list = preds.long().tolist()
+    preds = [dataset.sp_t.Decode(i).split() for i in out_list]
+    targets = [dataset.sp_t.Decode(i) for i in x_t.to("cpu").long().tolist()]
+    targets = [[i.split()] for i in targets]
     score = bleu_score(preds, targets)
     return score
 
-
 # basic translation
 
-def token_to_sentence(outs,dataset,EOS_token,detokenizer):
+def token_to_sentence(outs,dataset,EOS_token):
     preds = outs.to("cpu")
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
     out_list = preds.tolist()
-    preds = [
-        [dataset.kernel["target"].itos[i] for i in sublist if i != 0]
-        for sublist in out_list
-    ]
-    # detokenize
-    preds = [detokenizer.detokenize(i) for i in preds]
+    preds = [dataset.sp_t.Decode(i) for i in out_list]
     return preds
+
+
 
 def evaluate_show_attention(model,sentence,dataset,EOS_token):
     x_test = dataset.from_sentence_list('source',[sentence])
@@ -78,13 +67,11 @@ def evaluate_show_attention(model,sentence,dataset,EOS_token):
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
-    out_list = preds.tolist()
-    preds = [
-        [dataset.kernel["target"].itos[i] for i in sublist if i != 0]+['EOS']
-        for sublist in out_list
-    ]
-    original_sent = [dataset.kernel["source"].itos[i.item()] for i in x_test[0]]
+    out_list = preds.long().tolist()
+    out_list = [[i for i in sub_list if i !=0] for sub_list in out_list]
+    preds = [ dataset.sp_t.IdToPiece(sublist + [2]) for sublist in out_list]
+    original_sent = [dataset.sp_s.IdToPiece(sublist) for sublist in x_test.long().tolist()]
     # show attention maps
-    showAttention(original_sent,preds[0],weights[0,:len(preds[0])])
+    showAttention(original_sent[0],preds[0],weights[0,:len(preds[0])])
 
     

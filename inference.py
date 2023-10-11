@@ -25,30 +25,24 @@ import matplotlib.ticker as ticker
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-token_en = MosesTokenizer(lang="en")
-token_fr = MosesTokenizer(lang="fr")
-
-df = pd.read_csv(
-    "data/fra.txt", sep="\t", header=None, names=["en", "fr", "attribution"]
-)
-df.drop("attribution", axis=1, inplace=True)
-
+root_path = Path(__file__).resolve().parents[0]
+data_path = root_path / "data"
 checkpoint_path = Path("data/checkpoint.pt")
 
 config = dict(
-    epochs=50,
+    epochs=100,
     batch_size=512,
     learning_rate=3e-4,
-    vocab_source=2001,
+    vocab_source=5001,
     vocab_target=5001,
     embedding_size=128,
     hidden_size=64,
     device=device,
     lr=3e-4,
 )
-dataset = TranslationDataset(
-    df, config["vocab_source"], config["vocab_target"], from_file=True
-)
+
+df = pd.read_csv(f"{data_path}/fra-eng.csv")
+dataset = TranslationDataset(df, from_file=True)
 
 BOS_token = 1
 EOS_token = 2
@@ -101,6 +95,9 @@ with torch.no_grad():
     loss = loss_fn(out, y)
     loss = loss[mask].mean()
 # %%
+
+
+
 scores = []
 for x_s, x_t, y in test_loader:
     x_s, x_t = x_s.to(device), x_t.to(device)
@@ -134,11 +131,22 @@ x_test = dataset.from_sentence_list('source',source_sentences)
 
 outs,weights = model.evaluate(x_test)
 
-preds = token_to_sentence(outs,dataset,EOS_token,MosesDetokenizer(lang='fr')) 
+def token_to_sentence(outs,dataset,EOS_token):
+    preds = outs.to("cpu")
+    mask = preds == EOS_token
+    correctmask = mask.cumsum(dim=1) != 0
+    preds[correctmask] = 0
+    out_list = preds.long().tolist()
+    preds = [dataset.sp_t.Decode(i) for i in out_list]
+    return preds
+
+
+preds = token_to_sentence(outs,dataset,EOS_token) 
 
 
 # %%
-eg_sent = source_sentences[0]
+eg_sent = source_sentences[2]
+
 
 evaluate_show_attention(model,eg_sent,dataset,EOS_token)
 #%%
