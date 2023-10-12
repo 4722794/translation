@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.init as init
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split,SubsetRandomSampler,BatchSampler
 import torch.nn.functional as F
 from torch.optim import Adam, AdamW
 from torch.nn.utils import clip_grad_norm_
@@ -16,10 +16,10 @@ from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
+from scripts.utils import calculate_bleu_score
 import wandb
 from dotenv import load_dotenv
 import os
-import random
 
 load_dotenv()
 
@@ -59,7 +59,7 @@ model.to(device)
 optim = AdamW(model.parameters(), lr=config["lr"])
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 if checkpoint_path.exists():
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path,map_location=device)
     # load checkpoint details
     model.load_state_dict(checkpoint["nn_state"])
     optim.load_state_dict(checkpoint["opt_state"])
@@ -76,42 +76,28 @@ else:
 # %%
 # make dataloaders
 
+collate_fn = lambda x: (pad_sequence(i,batch_first=True) for i in x)
+    
+train_set, valid_set, test_set = random_split(dataset, [0.9, 0.05, 0.05],generator=torch.Generator().manual_seed(4722794))
 
-def collate_fn(batch):
-    xs, xt = zip(*batch)
-    x_s = [torch.Tensor(x) for x in xs]
-    x_t = [torch.Tensor(x[:-1]) for x in xt]
-    y = [torch.Tensor(x[1:]) for x in xt]
-    x_s = pad_sequence(x_s, batch_first=True)
-    x_t = pad_sequence(x_t, batch_first=True)
-    y = pad_sequence(y, batch_first=True)
-    return x_s.long(), x_t.long(), y.long()
+train_sampler, val_sampler = BatchSampler(SubsetRandomSampler(train_set.indices),batch_size=config["batch_size"],drop_last=True), BatchSampler(SubsetRandomSampler(valid_set.indices),batch_size=config["batch_size"],drop_last=True)
+test_sampler = BatchSampler(SubsetRandomSampler(test_set.indices),batch_size=config["batch_size"],drop_last=True)
 
-
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-g = torch.Generator()
-g.manual_seed(4722794)
-train_set, valid_set, test_set = random_split(dataset, [0.9, 0.05, 0.05])
 train_loader = DataLoader(
-    train_set,
-    batch_size=config["batch_size"],
+    dataset,
+    batch_sampler=train_sampler,
     collate_fn=collate_fn,
-    shuffle=True,
-    worker_init_fn=seed_worker,
-    generator=g,
 )
-valid_loader = DataLoader(
-    valid_set,
-    batch_size=config["batch_size"],
+val_loader = DataLoader(
+    dataset,
+    batch_sampler=val_sampler,
     collate_fn=collate_fn,
-    worker_init_fn=seed_worker,
-    generator=g,
 )
+
+test_loader = DataLoader(
+    dataset,
+    batch_sampler=test_sampler,
+    collate_fn=collate_fn)
 
 # %%
 
@@ -130,7 +116,7 @@ num_epochs = config["epochs"]
 
 for epoch in range(epoch, epoch + num_epochs):
     train_loss, eval_loss = torch.zeros(len(train_loader)), torch.zeros(
-        len(valid_loader)
+        len(val_loader)
     )
     print(f"Epoch {epoch+1}")
     for c, (x_s, x_t, y) in enumerate(tqdm(train_loader)):
@@ -149,12 +135,12 @@ for epoch in range(epoch, epoch + num_epochs):
         clip_grad_norm_(model.parameters(), max_norm=1)
         # optimization step
         optim.step()
-        train_loss[c] = loss
+        train_loss[c] = loss.item()
     # get the averaged training loss
     train_loss = train_loss.mean()
     print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
 
-    for c, (x_s, x_t, y) in enumerate(valid_loader):
+    for c, (x_s, x_t, y) in enumerate(val_loader):
         with torch.no_grad():
             inference_device = torch.device("cpu")
             x_s, x_t, y = (
@@ -168,20 +154,12 @@ for epoch in range(epoch, epoch + num_epochs):
             mask = y != 0
             loss = loss_fn(out, y)
             loss = loss[mask].mean()
-            eval_loss[c] = loss
+            eval_loss[c] = loss.item()
 
     # get the averaged validation loss
     eval_loss = eval_loss.mean()
     print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f}")
-    log_table.add_data(epoch + 1, train_loss, eval_loss)
-    run.log(
-        dict(
-            epoch=epoch + 1,
-            train_loss=train_loss,
-            val_loss=eval_loss,
-            training_log=log_table,
-        )
-    )
+
     if checkpoint_path.exists() and eval_loss < checkpoint["loss"]:
         checkpoint["epoch"] = epoch
         checkpoint["loss"] = eval_loss
@@ -190,4 +168,14 @@ for epoch in range(epoch, epoch + num_epochs):
         torch.save(checkpoint, checkpoint_path)
 # %%
 
+EOS_token = 2
+scores = []
+for x_s, x_t, y in test_loader:
+    x_s, x_t = x_s.to(device), x_t.to(device)
+    outs, weights = model.evaluate(x_s, device=device)
+    score = calculate_bleu_score(outs, x_t, dataset, EOS_token)
+    scores.append(score)
+
+mean_score = torch.tensor(scores).mean()
+print(f"Mean BLEU score is {mean_score:.4f}")
 wandb.finish()

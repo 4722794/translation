@@ -33,13 +33,16 @@ class TranslationDataset(Dataset):
         self.sp_s.SetEncodeExtraOptions('eos')
         self.sp_t.SetEncodeExtraOptions('bos:eos')
         df = self.read_file(df)
-        self.X_s, self.X_t = self.codex(df,from_file)
+        self.X_s, self.X_t,self.Y = self.codex(df,from_file)
 
     def __len__(self):
         return len(self.X_s.data)
 
     def __getitem__(self, index):
-        return self.X_s[index], self.X_t[index]
+        return self.X_s[index], self.X_t[index], self.Y[index]
+    
+    def __getitems__(self,idx):
+        return self.X_s[idx], self.X_t[idx],self.Y[idx]
     
     def codex(self,df,from_file=False):
         # read the file
@@ -49,11 +52,20 @@ class TranslationDataset(Dataset):
 
         else:
             s_tokens = df.iloc[:,0].apply(lambda x: self.sp_s.EncodeAsIds(x))
-            s_tokens.to_csv(f'{data_path}/source.csv',index=False,header=False)
             t_tokens = df.iloc[:,1].apply(lambda x: self.sp_t.EncodeAsIds(x))
+            s_tokens.to_csv(f'{data_path}/source.csv',index=False,header=False)
             t_tokens.to_csv(f'{data_path}/target.csv',index=False,header=False)
-        return s_tokens.values,t_tokens.values
+        
+        x_s,x_t, y = self.series_to_tensor(s_tokens,t_tokens)
+        return x_s,x_t,y
     
+
+    def series_to_tensor(self,s_tokens,t_tokens):
+        x_s = s_tokens.apply(lambda x: torch.tensor(x,dtype=torch.long))
+        x_t = t_tokens.apply(lambda x: torch.tensor(x[:-1],dtype=torch.long))
+        y = t_tokens.apply(lambda x: torch.tensor(x[1:],dtype=torch.long))
+        return x_s.values,x_t.values,y.values
+
 
     def read_file(self,df):
         df.iloc[:,0] = self.preprocess(df.iloc[:,0])
@@ -87,6 +99,6 @@ class TranslationDataset(Dataset):
 #%%
 if __name__ == '__main__':
     df = pd.read_csv(f'{data_path}/fra-eng.csv')
-    dataset = TranslationDataset(df,from_file=False)
+    dataset = TranslationDataset(df,from_file=True)
     
 # %%
