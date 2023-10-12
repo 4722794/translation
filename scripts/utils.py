@@ -45,7 +45,7 @@ def calculate_bleu_score(outs, x_t, dataset, EOS_token):
     targets = [dataset.sp_t.Decode(i) for i in x_t.to("cpu").long().tolist()]
     targets = [[i.split()] for i in targets]
     score = bleu_score(preds, targets)
-    return score
+    return 100*score
 
 # basic translation
 

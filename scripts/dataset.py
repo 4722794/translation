@@ -1,15 +1,11 @@
 #%%
 import torch
-import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
-from torch.optim import Adam
 import pandas as pd
-from collections import namedtuple, Counter
 from pathlib import Path
 import ast
 import numpy as np
-import pickle
 import sentencepiece as spm
 
 root_path = Path(__file__).resolve().parents[1]
@@ -27,13 +23,13 @@ token_t.Load(str(t_tokenizer_path))
 
 class TranslationDataset(Dataset):
     
-    def __init__(self,df,from_file=False):
+    def __init__(self,path):
         super().__init__()
         self.sp_s, self.sp_t = token_s, token_t
         self.sp_s.SetEncodeExtraOptions('eos')
         self.sp_t.SetEncodeExtraOptions('bos:eos')
-        df = self.read_file(df)
-        self.X_s, self.X_t = self.codex(df,from_file)
+        df = self.read_file(path)
+        self.X_s, self.X_t = self.codex(df)
 
     def __len__(self):
         return len(self.X_s.data)
@@ -41,21 +37,15 @@ class TranslationDataset(Dataset):
     def __getitem__(self, index):
         return self.X_s[index], self.X_t[index]
     
-    def codex(self,df,from_file=False):
+    def codex(self,df):
         # read the file
-        if from_file:
-            s_tokens = pd.read_csv(f'{data_path}/source.csv', header=None)[0].apply(ast.literal_eval)
-            t_tokens = pd.read_csv(f'{data_path}/target.csv', header=None)[0].apply(ast.literal_eval)
-
-        else:
-            s_tokens = df.iloc[:,0].apply(lambda x: self.sp_s.EncodeAsIds(x))
-            s_tokens.to_csv(f'{data_path}/source.csv',index=False,header=False)
-            t_tokens = df.iloc[:,1].apply(lambda x: self.sp_t.EncodeAsIds(x))
-            t_tokens.to_csv(f'{data_path}/target.csv',index=False,header=False)
+        s_tokens = df.iloc[:,0].apply(lambda x: self.sp_s.EncodeAsIds(x))
+        t_tokens = df.iloc[:,1].apply(lambda x: self.sp_t.EncodeAsIds(x))
         return s_tokens.values,t_tokens.values
     
 
-    def read_file(self,df):
+    def read_file(self,path):
+        df = pd.read_csv(path)
         df.iloc[:,0] = self.preprocess(df.iloc[:,0])
         df.iloc[:,1] = self.preprocess(df.iloc[:,1])
         df.replace(r"^\s*$",np.nan,regex=True,inplace=True)
@@ -86,7 +76,7 @@ class TranslationDataset(Dataset):
 
 #%%
 if __name__ == '__main__':
-    df = pd.read_csv(f'{data_path}/fra-eng.csv')
-    dataset = TranslationDataset(df,from_file=False)
+    file_path = data_path / 'fra-eng.csv'
+    dataset = TranslationDataset(file_path)
     
 # %%

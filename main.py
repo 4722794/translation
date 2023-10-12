@@ -15,6 +15,7 @@ from tqdm import tqdm
 from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
+from scripts.utils import calculate_bleu_score
 from scripts.model import TranslationNN
 import wandb
 from dotenv import load_dotenv
@@ -35,7 +36,6 @@ checkpoint_path = Path(f"{model_path}/checkpoint.pt")
 config = dict(
     epochs=100,
     batch_size=256,
-    learning_rate=3e-4,
     vocab_source=5001,
     vocab_target=5001,
     embedding_size=256,
@@ -44,8 +44,16 @@ config = dict(
     lr=1e-4,
 )
 
-df = pd.read_csv(f"{data_path}/fra-eng.csv")
-dataset = TranslationDataset(df, from_file=True)
+train_path, val_path, test_path = (
+    data_path / "train/translations.csv",
+    data_path / "valid/translations.csv",
+    data_path / "test/translations.csv",
+)
+train_set,valid_set,test_set = (
+    TranslationDataset(train_path),
+    TranslationDataset(val_path),
+    TranslationDataset(test_path),
+)
 
 # %%
 # instantiate params
@@ -59,7 +67,7 @@ model.to(device)
 optim = AdamW(model.parameters(), lr=config["lr"])
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 if checkpoint_path.exists():
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path,map_location=device)
     # load checkpoint details
     model.load_state_dict(checkpoint["nn_state"])
     optim.load_state_dict(checkpoint["opt_state"])
@@ -88,29 +96,20 @@ def collate_fn(batch):
     return x_s.long(), x_t.long(), y.long()
 
 
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-g = torch.Generator()
-g.manual_seed(4722794)
-train_set, valid_set, test_set = random_split(dataset, [0.9, 0.05, 0.05])
 train_loader = DataLoader(
     train_set,
     batch_size=config["batch_size"],
     collate_fn=collate_fn,
-    shuffle=True,
-    worker_init_fn=seed_worker,
-    generator=g,
-)
+    shuffle=True,)
 valid_loader = DataLoader(
     valid_set,
     batch_size=config["batch_size"],
     collate_fn=collate_fn,
-    worker_init_fn=seed_worker,
-    generator=g,
+)
+test_loader = DataLoader(
+    test_set,
+    batch_size=config["batch_size"],
+    collate_fn=collate_fn,
 )
 
 # %%
@@ -189,5 +188,14 @@ for epoch in range(epoch, epoch + num_epochs):
         checkpoint["opt_state"] = optim.state_dict()
         torch.save(checkpoint, checkpoint_path)
 # %%
+EOS_token = 2
+scores = []
+for x_s, x_t, y in test_loader:
+    x_s, x_t = x_s.to(device), x_t.to(device)
+    outs, weights = model.evaluate(x_s, device=device)
+    score = calculate_bleu_score(outs, x_t, test_set, EOS_token)
+    scores.append(score)
 
+mean_score = torch.tensor(scores).mean()
+#%%
 wandb.finish()

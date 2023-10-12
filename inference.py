@@ -4,9 +4,6 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, random_split
-from torch.optim import AdamW
-from torch.nn.utils import clip_grad_norm_
-from sacremoses import MosesTokenizer, MosesDetokenizer
 import pandas as pd
 from pathlib import Path
 import numpy as np
@@ -27,18 +24,18 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
-checkpoint_path = Path("data/checkpoint.pt")
+model_path = root_path / "saved_models"
+checkpoint_path = Path(f"{model_path}/checkpoint.pt")
 
 config = dict(
     epochs=100,
-    batch_size=512,
-    learning_rate=3e-4,
+    batch_size=256,
     vocab_source=5001,
     vocab_target=5001,
-    embedding_size=128,
-    hidden_size=64,
+    embedding_size=256,
+    hidden_size=256,
     device=device,
-    lr=3e-4,
+    lr=1e-4,
 )
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
@@ -96,8 +93,6 @@ with torch.no_grad():
     loss = loss[mask].mean()
 # %%
 
-
-
 scores = []
 for x_s, x_t, y in test_loader:
     x_s, x_t = x_s.to(device), x_t.to(device)
@@ -145,7 +140,7 @@ preds = token_to_sentence(outs,dataset,EOS_token)
 
 
 # %%
-eg_sent = source_sentences[2]
+eg_sent = source_sentences[0]
 
 
 evaluate_show_attention(model,eg_sent,dataset,EOS_token)
