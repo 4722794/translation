@@ -11,7 +11,6 @@ from torch.nn.utils import clip_grad_norm_
 import pandas as pd
 from pathlib import Path
 import numpy as np
-from tqdm import tqdm
 from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
@@ -20,7 +19,6 @@ from scripts.model import TranslationNN
 import wandb
 from dotenv import load_dotenv
 import os
-import random
 
 load_dotenv()
 
@@ -132,7 +130,7 @@ for epoch in range(epoch, epoch + num_epochs):
         len(valid_loader)
     )
     print(f"Epoch {epoch+1}")
-    for c, (x_s, x_t, y) in enumerate(tqdm(train_loader)):
+    for c, (x_s, x_t, y) in enumerate(train_loader):
         x_s, x_t, y = x_s.to(device), x_t.to(device), y.to(device)
         model.to(device)
         out = model(x_s, x_t, device)
@@ -155,14 +153,13 @@ for epoch in range(epoch, epoch + num_epochs):
 
     for c, (x_s, x_t, y) in enumerate(valid_loader):
         with torch.no_grad():
-            inference_device = torch.device("cpu")
             x_s, x_t, y = (
-                x_s.to(inference_device),
-                x_t.to(inference_device),
-                y.to(inference_device),
+                x_s.to(device),
+                x_t.to(device),
+                y.to(device),
             )
-            model.to(inference_device)
-            out = model(x_s, x_t, inference_device)
+            model.to(device)
+            out = model(x_s, x_t, device)
             out = out.permute(0, 2, 1)
             mask = y != 0
             loss = loss_fn(out, y)
@@ -197,5 +194,6 @@ for x_s, x_t, y in test_loader:
     scores.append(score)
 
 mean_score = torch.tensor(scores).mean()
+print(f"Mean BLEU score is {mean_score:.4f}")
 #%%
 wandb.finish()
