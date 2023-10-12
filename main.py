@@ -19,6 +19,7 @@ from scripts.model import TranslationNN
 import wandb
 from dotenv import load_dotenv
 import os
+import random
 
 load_dotenv()
 
@@ -28,23 +29,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
-checkpoint_path = Path("data/checkpoint.pt")
+model_path = root_path / "saved_models"
+checkpoint_path = Path(f"{model_path}/checkpoint.pt")
 
 config = dict(
     epochs=100,
-    batch_size=512,
+    batch_size=256,
     learning_rate=3e-4,
     vocab_source=5001,
     vocab_target=5001,
-    embedding_size=128,
-    hidden_size=64,
+    embedding_size=256,
+    hidden_size=256,
     device=device,
-    lr=3e-4,
+    lr=1e-4,
 )
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
 dataset = TranslationDataset(df, from_file=True)
-
 
 # %%
 # instantiate params
@@ -87,22 +88,37 @@ def collate_fn(batch):
     return x_s.long(), x_t.long(), y.long()
 
 
-train_set, valid_set = random_split(dataset, [0.9, 0.1])
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+g = torch.Generator()
+g.manual_seed(4722794)
+train_set, valid_set, test_set = random_split(dataset, [0.9, 0.05, 0.05])
 train_loader = DataLoader(
-    train_set, batch_size=config["batch_size"], collate_fn=collate_fn, shuffle=True
+    train_set,
+    batch_size=config["batch_size"],
+    collate_fn=collate_fn,
+    shuffle=True,
+    worker_init_fn=seed_worker,
+    generator=g,
 )
 valid_loader = DataLoader(
-    valid_set, batch_size=config["batch_size"], collate_fn=collate_fn
+    valid_set,
+    batch_size=config["batch_size"],
+    collate_fn=collate_fn,
+    worker_init_fn=seed_worker,
+    generator=g,
 )
 
 # %%
 
 # wandb section
 wandb.login(key=api_key)
-
-run = wandb.init(project="français", name="SPecial attention", config=config)
+run = wandb.init(project="français", name="Baseline", config=config)
 log_table = wandb.Table(columns=["epoch", "train_loss", "val_loss"])
-
 wandb.watch(model, log_freq=100)
 
 
