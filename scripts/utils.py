@@ -14,16 +14,17 @@ import matplotlib.ticker as ticker
 
 # attention stuff
 
-def showAttention(input_words,output_words, attentions):
+
+def showAttention(input_words, output_words, attentions):
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    cax = ax.matshow(attentions.cpu().numpy(), cmap='bone')
+    cax = ax.matshow(attentions.cpu().numpy(), cmap="bone")
     fig.colorbar(cax)
 
     # set up axes
 
-    ax.set_xticklabels([''] + input_words, rotation=90)
-    ax.set_yticklabels([''] + output_words)
+    ax.set_xticklabels([""] + input_words, rotation=90)
+    ax.set_yticklabels([""] + output_words)
 
     # show label at every tick
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
@@ -32,14 +33,14 @@ def showAttention(input_words,output_words, attentions):
     plt.show()
 
 
-
 # bleu score
 
-def calculate_bleu_score(outs, x_t, dataset, EOS_token):
-    preds = outs.to("cpu")
+
+def calculate_bleu_score(outs, x_t, dataset, EOS_token, device):
+    preds = outs.to(device)
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
-    preds[correctmask] = 0
+    preds.masked_fill_(mask, 0)
     out_list = preds.long().tolist()
     preds = [dataset.sp_t.Decode(i).split() for i in out_list]
     targets = [dataset.sp_t.Decode(i) for i in x_t.to("cpu").long().tolist()]
@@ -47,9 +48,11 @@ def calculate_bleu_score(outs, x_t, dataset, EOS_token):
     score = bleu_score(preds, targets)
     return score
 
+
 # basic translation
 
-def token_to_sentence(outs,dataset,EOS_token):
+
+def token_to_sentence(outs, dataset, EOS_token):
     preds = outs.to("cpu")
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
@@ -59,19 +62,57 @@ def token_to_sentence(outs,dataset,EOS_token):
     return preds
 
 
-
-def evaluate_show_attention(model,sentence,dataset,EOS_token):
-    x_test = dataset.from_sentence_list('source',[sentence])
-    outs,weights = model.evaluate(x_test)
+def evaluate_show_attention(model, sentence, dataset, EOS_token):
+    x_test = dataset.from_sentence_list("source", [sentence])
+    outs, weights = model.evaluate(x_test)
     preds = outs.to("cpu")
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
     out_list = preds.long().tolist()
-    out_list = [[i for i in sub_list if i !=0] for sub_list in out_list]
-    preds = [ dataset.sp_t.IdToPiece(sublist + [2]) for sublist in out_list]
-    original_sent = [dataset.sp_s.IdToPiece(sublist) for sublist in x_test.long().tolist()]
+    out_list = [[i for i in sub_list if i != 0] for sub_list in out_list]
+    preds = [dataset.sp_t.IdToPiece(sublist + [2]) for sublist in out_list]
+    original_sent = [
+        dataset.sp_s.IdToPiece(sublist) for sublist in x_test.long().tolist()
+    ]
     # show attention maps
-    showAttention(original_sent[0],preds[0],weights[0,:len(preds[0])])
+    showAttention(original_sent[0], preds[0], weights[0, : len(preds[0])])
 
-    
+
+# for training
+
+
+def forward_pass(batch, model, loss_fn, device):
+    x_s, x_t, y = batch
+    x_s, x_t, y = x_s.to(device), x_t.to(device), y.to(device)
+    model.to(device)
+    out = model(x_s, x_t)
+    out = out.permute(0, 2, 1)
+    mask = y != 0
+    loss = loss_fn(out, y)
+    loss = loss[mask].mean()
+    return loss
+
+
+def train_loop(loader, model, optim, loss_fn, loss_tensor, device):
+    model.to(device)
+    model.train()
+    for c, batch in enumerate(loader):
+        loss = forward_pass(batch, model, loss_fn, device)
+        # backprop step
+        optim.zero_grad()
+        loss.backward()
+        # optimization step
+        optim.step()
+        loss_tensor[c] = loss.item()
+    return loss_tensor
+
+
+def valid_loop(loader, model, loss_fn, loss_tensor, device):
+    model.to(device)
+    model.eval()
+    for c, batch in enumerate(loader):
+        with torch.inference_mode():
+            loss = forward_pass(batch, model, loss_fn, device)
+        loss_tensor[c] = loss.item()
+    return loss_tensor
