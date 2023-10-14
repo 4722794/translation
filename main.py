@@ -32,8 +32,8 @@ model_path = root_path / "saved_models"
 checkpoint_path = Path(f"{model_path}/checkpoint.pt")
 
 config = dict(
-    epochs=1,
-    batch_size=5,
+    epochs=100,
+    batch_size=512,
     vocab_source=5001,
     vocab_target=5001,
     embedding_size=256,
@@ -44,7 +44,6 @@ config = dict(
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
 # only taking first 100 elements
-df = df.iloc[:100]
 dataset = TranslationDataset(df, from_file=False)
 
 # %%
