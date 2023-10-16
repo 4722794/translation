@@ -3,18 +3,16 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
-import torch.nn.init as init
 from torch.utils.data import DataLoader, random_split, SubsetRandomSampler, BatchSampler
-
 from torch.optim import Adam, AdamW
-from torch.nn.utils import clip_grad_norm_
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import pandas as pd
 from pathlib import Path
 from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, train_loop, valid_loop
+from scripts.utils import calculate_bleu_score, train_loop, valid_loop,forward_pass,CustomAdam,save_checkpoint
 import wandb
 from dotenv import load_dotenv
 import os
@@ -29,7 +27,7 @@ inference_device = torch.device("cpu")
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
-checkpoint_path = Path(f"{model_path}/checkpoint.pt")
+checkpoint_path = Path(f"{model_path}/checkpoint.tar")
 
 config = dict(
     epochs=100,
@@ -44,6 +42,7 @@ config = dict(
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
 # only taking first 100 elements
+# df = df.head(100)
 dataset = TranslationDataset(df, from_file=False)
 
 # %%
@@ -58,21 +57,31 @@ model.to(device)
 
 param_options = [
     {'params':model.encoder.parameters(),'lr':3*config["lr"]},
+    {'params':model.decoder.initialW},
     {'params':model.decoder.embedding.parameters(),'lr':3*config["lr"]},
-    {'params':model.decoder.gru.parameters(),'lr':1e-4},
     {'params':model.decoder.attention.parameters(),'lr':config["lr"]},
+    {'params':model.decoder.gru.parameters(),'lr':1e-4},
     {'params':model.decoder.out.parameters(),'lr':0.5*config["lr"]},
-    {'params':model.decoder.initialW}
 ]
-optim = AdamW(param_options, lr=config["lr"])
-loss_fn = nn.CrossEntropyLoss(reduction="none")
+optim = CustomAdam(param_options, lr=config["lr"])
+#%%
+def save_update(update, pre_param):
+    # Do something with the update, like saving or logging it
+    ratio = (update.std()/(pre_param.std() + 1e-8))
+    update_data_ratio_batch.append(ratio.log10().item())
 
-checkpoint = torch.load(checkpoint_path, map_location=device)
-# load checkpoint details
-model.load_state_dict(checkpoint["nn_state"])
-optim.load_state_dict(checkpoint["opt_state"])
-epoch = checkpoint["epoch"]
-loss = checkpoint["loss"]
+total_param_count = 0
+for p in model.parameters():
+    total_param_count+=1
+
+optim.register_hook(save_update)
+scheduler = CosineAnnealingWarmRestarts(optim, T_0=2, T_mult=2, eta_min=1e-5)
+loss_fn = nn.CrossEntropyLoss(reduction="none")
+if not checkpoint_path.exists():
+    checkpoint = save_checkpoint(checkpoint_path, model,0,torch.inf, optim, scheduler)
+else:
+    checkpoint = torch.load(checkpoint_path)
+# to save update/dataratio
 
 # %%
 # make dataloaders
@@ -116,11 +125,33 @@ wandb.watch(model, log_freq=100)
 
 EOS_token = 2
 num_epochs = config["epochs"]
+update_data_ratio_batch = []
+keys = [f'batch/{n}' for n,p in model.named_parameters() if len(p.shape)==2]
 
-for epoch in range(epoch, epoch + num_epochs):
+def train_loop(loader, model, optim, scheduler, loss_fn, loss_tensor, epoch,device):
+    model.to(device)
+    model.train()
+    for c, batch in enumerate(loader):
+        loss = forward_pass(batch, model, loss_fn, device)
+        # backprop step
+        optim.zero_grad()
+        loss.backward()
+        # optimization step
+        optim.step()
+        # scheduler step
+        scheduler.step(epoch + c / len(loader))
+        loss_tensor[c] = loss.item()
+        fine_metric = dict(zip(keys,update_data_ratio_batch))
+        update_data_ratio_batch.clear()
+        fine_metric['batch/iter'] = epoch*len(loader)+c
+        run.log(fine_metric)
+        
+    return loss_tensor
+#%%
+for epoch in range(num_epochs):
     train_loss, eval_loss = torch.zeros(len(train_loader)), torch.zeros(len(val_loader))
     print(f"Epoch {epoch+1}")
-    train_loss = train_loop(train_loader, model, optim, loss_fn, train_loss, device)
+    train_loss = train_loop(train_loader, model, optim, scheduler, loss_fn, train_loss, epoch,device)
     # get the averaged training loss
     train_loss = train_loss.mean()
     print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
@@ -129,12 +160,9 @@ for epoch in range(epoch, epoch + num_epochs):
     eval_loss = eval_loss.mean()
     print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f}")
 
-    if checkpoint_path.exists() and eval_loss < checkpoint["loss"]:
-        checkpoint["epoch"] = epoch
-        checkpoint["loss"] = eval_loss
-        checkpoint["nn_state"] = model.state_dict()
-        checkpoint["opt_state"] = optim.state_dict()
-        torch.save(checkpoint, checkpoint_path)
+    if eval_loss < checkpoint["loss"]:
+        check_point = save_checkpoint(checkpoint_path, model,epoch,eval_loss, optim, scheduler)
+        
 
     scores = []
     for x_s, x_t, y in test_loader:
@@ -150,10 +178,10 @@ for epoch in range(epoch, epoch + num_epochs):
     mean_score = torch.tensor(scores).mean()
     print(f"Mean BLEU score is {mean_score:.4f}")
     metrics = {
-        "epoch": epoch,
-        "train_loss": train_loss,
-        "val_loss": eval_loss,
-        "bleu_score": mean_score,
+        "baseplots/epoch": epoch,
+        "baseplots/train_loss": train_loss,
+        "baseplots/val_loss": eval_loss,
+        "baseplots/bleu_score": mean_score,
     }
     run.log(metrics)
 wandb.finish()

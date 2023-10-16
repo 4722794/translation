@@ -2,10 +2,6 @@
 # %%
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-import torch.nn.init as init
-from torch.utils.data import DataLoader, random_split, SubsetRandomSampler, BatchSampler
-
 from torch.optim import Adam, AdamW
 from torch.nn.utils import clip_grad_norm_
 import pandas as pd
@@ -14,7 +10,7 @@ from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, train_loop, valid_loop
+from scripts.utils import calculate_bleu_score, train_loop, valid_loop,CustomScheduler
 import wandb
 from dotenv import load_dotenv
 import os
@@ -64,12 +60,14 @@ param_options = [
     {'params':model.decoder.initialW}
 ]
 optim = AdamW(param_options, lr=config["lr"])
+scheduler = CustomScheduler(optim, freq_decay=0.5, amp_decay=0.95)
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 
 #%%
 checkpoint = {
     "nn_state": model.state_dict(),
     "opt_state": optim.state_dict(),
+    "scheduler_state": scheduler.state_dict(),
     "epoch": 0,
     "loss": torch.inf,
 }
