@@ -39,7 +39,7 @@ config = dict(
     embedding_size=256,
     hidden_size=256,
     device=device,
-    lr=3e-4,
+    lr=1e-4,
 )
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
@@ -55,6 +55,15 @@ model = TranslationNN(
     config["hidden_size"],
 )
 model.to(device)
+
+param_options = [
+    {'params':model.encoder.parameters(),'lr':3*config["lr"]},
+    {'params':model.decoder.embedding.parameters(),'lr':3*config["lr"]},
+    {'params':model.decoder.gru.parameters(),'lr':1e-4},
+    {'params':model.decoder.attention.parameters(),'lr':config["lr"]},
+    {'params':model.decoder.out.parameters(),'lr':0.5*config["lr"]},
+    {'params':model.decoder.initialW}
+]
 optim = AdamW(model.parameters(), lr=config["lr"])
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 
