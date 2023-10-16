@@ -37,7 +37,7 @@ config = dict(
     embedding_size=256,
     hidden_size=256,
     device=device,
-    lr=1e-4,
+    lr=1e-3,
 )
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
@@ -56,13 +56,8 @@ model = TranslationNN(
 model.to(device)
 
 param_options = [
-    {'params':model.encoder.parameters(),'lr':3*config["lr"]},
-    {'params':model.decoder.initialW},
-    {'params':model.decoder.embedding.parameters(),'lr':3*config["lr"]},
-    {'params':model.decoder.attention.parameters(),'lr':config["lr"]},
-    {'params':model.decoder.gru.parameters(),'lr':1e-4},
-    {'params':model.decoder.out.parameters(),'lr':0.5*config["lr"]},
-]
+    {'params':model.encoder.parameters(),'lr':0.5*config["lr"]},
+    {'params':model.decoder.parameters()}]
 optim = CustomAdam(param_options, lr=config["lr"])
 #%%
 def save_update(update, pre_param):
@@ -119,7 +114,7 @@ test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate
 # %%
 # wandb section
 wandb.login(key=api_key)
-run = wandb.init(project="french", name="Baseline-lr scheduler", config=config)
+run = wandb.init(project="french", name="Dropouts", config=config)
 
 wandb.watch(model, log_freq=100)
 
