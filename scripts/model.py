@@ -16,6 +16,15 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.embedding = nn.Embedding(V, E, max_norm=1, scale_grad_by_freq=True)
         self.gru = nn.GRU(E, H, batch_first=True, bidirectional=True)
+        self.weight_init()
+
+    def weight_init(self):
+        # use a kaiming init
+        for name, param in self.named_parameters():
+            if "weight" in name:
+                nn.init.kaiming_normal_(param)
+            else:
+                nn.init.zeros_(param)
 
     def forward(self, x):
         B, T = x.shape
@@ -79,9 +88,22 @@ class Decoder(nn.Module):
         self.gru = nn.GRU(E + 2 * H, H, batch_first=True)
         self.out = nn.Linear(H, V)
         self.initialW = nn.Parameter(torch.randn(H, H))
+        self.weight_init()
+        nn.init.normal_(self.out.weight, 0, 0.01)
+        nn.init.zeros_(self.out.bias)
 
         # buffers
         self.register_buffer("hidden_decoder", torch.zeros(1, 1, H))
+
+    
+
+    def weight_init(self):
+    # use a kaiming init
+        for name, param in self.named_parameters():
+            if "weight" in name:
+                nn.init.kaiming_normal_(param)
+            else:
+                nn.init.zeros_(param)
 
     def forward(self, x, hidden_encoder):
         # made a change to be stashed

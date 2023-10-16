@@ -39,7 +39,7 @@ config = dict(
     embedding_size=256,
     hidden_size=256,
     device=device,
-    lr=1e-4,
+    lr=3e-4,
 )
 
 df = pd.read_csv(f"{data_path}/fra-eng.csv")
@@ -101,8 +101,8 @@ test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate
 # %%
 # wandb section
 wandb.login(key=api_key)
-run = wandb.init(project="french", name="Baseline", config=config)
-log_table = wandb.Table(columns=["epoch", "val_loss", "bleu_score"])
+run = wandb.init(project="french", name="Baseline-bigger learning weight", config=config)
+
 wandb.watch(model, log_freq=100)
 
 EOS_token = 2
@@ -147,9 +147,6 @@ for epoch in range(epoch, epoch + num_epochs):
         "bleu_score": mean_score,
     }
     run.log(metrics)
-    log_table.add_data(epoch, eval_loss, mean_score)
-
-run.log({"bleu_score": log_table})
 wandb.finish()
 
 # %%
