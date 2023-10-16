@@ -64,7 +64,7 @@ param_options = [
     {'params':model.decoder.out.parameters(),'lr':0.5*config["lr"]},
     {'params':model.decoder.initialW}
 ]
-optim = AdamW(model.parameters(), lr=config["lr"])
+optim = AdamW(param_options, lr=config["lr"])
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 
 checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -110,7 +110,7 @@ test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate
 # %%
 # wandb section
 wandb.login(key=api_key)
-run = wandb.init(project="french", name="Baseline-bigger learning weight", config=config)
+run = wandb.init(project="french", name="Baseline-adjusted learning rate", config=config)
 
 wandb.watch(model, log_freq=100)
 

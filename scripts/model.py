@@ -128,7 +128,7 @@ class Decoder(nn.Module):
             x_emb = self.embedding(x)
             c_t, weights = self.attention(s_prev, hidden_encoder)
             x_in = torch.cat((x_emb, c_t), dim=-1)
-            s_prev, _ = self.gru(x_in)
+            s_prev, _ = self.gru(x_in,s_prev.permute(1,0,2))
             out = self.out(s_prev)
 
         return out, s_prev, weights
