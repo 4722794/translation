@@ -114,7 +114,7 @@ test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate
 # %%
 # wandb section
 wandb.login(key=api_key)
-run = wandb.init(project="french", name="Dropouts", config=config)
+run = wandb.init(project="french", name="Skip connections", config=config)
 
 wandb.watch(model, log_freq=100)
 
