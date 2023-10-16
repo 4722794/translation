@@ -4,3 +4,4 @@
 .env
 wandb/*
 temp/*
+saved_models/*
