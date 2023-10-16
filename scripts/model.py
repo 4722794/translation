@@ -116,7 +116,7 @@ class Decoder(nn.Module):
             x_t = x_emb[:, t, :].unsqueeze(1)
             c_t, _ = self.attention(s_prev, hidden_encoder)
             x_in = torch.cat((x_t, c_t), dim=-1)
-            s_prev, _ = self.gru(x_in)
+            s_prev, _ = self.gru(x_in,s_prev.permute(1,0,2)) # had to permute because s_prev is dims B,1,H but but the input expects to be 1,B,H
             hidden_decoder[:, t, :] = s_prev.squeeze(1)
 
         out = self.out(hidden_decoder)
