@@ -16,6 +16,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.embedding = nn.Embedding(V, E, max_norm=1, scale_grad_by_freq=True)
         self.gru = nn.GRU(E, H, batch_first=True, bidirectional=True)
+        self.dropout = nn.Dropout(0.5) # later improve this by letting this be a heuristic parameter
         self.weight_init()
 
     def weight_init(self):
@@ -35,6 +36,7 @@ class Encoder(nn.Module):
         )
         all_h_packed, _ = self.gru(x_pack)
         all_h, _ = pad_packed_sequence(all_h_packed, batch_first=True)
+        all_h = self.dropout(all_h)
         return all_h
         # return all hidden states
 
@@ -88,6 +90,10 @@ class Decoder(nn.Module):
         self.gru = nn.GRU(E + 2 * H, H, batch_first=True)
         self.out = nn.Linear(H, V)
         self.initialW = nn.Parameter(torch.randn(H, H))
+        # dropouts
+        self.dropout_emb = nn.Dropout(0.3)
+        self.dropout_att = nn.Dropout(0.3)
+        self.dropout_gru = nn.Dropout(0.3)
         self.weight_init()
         nn.init.normal_(self.out.weight, 0, 0.01)
         nn.init.zeros_(self.out.bias)
@@ -109,14 +115,17 @@ class Decoder(nn.Module):
         # made a change to be stashed
         H = self.gru.hidden_size
         x_emb = self.embedding(x)
+        x_emb = self.dropout_emb(x_emb)
         B, T, E = x_emb.shape
         s_prev = hidden_encoder[:, :1, H:] @ self.initialW  # shape B,1,H
         hidden_decoder = self.hidden_decoder.repeat(B, T, 1)
         for t in range(T):
             x_t = x_emb[:, t, :].unsqueeze(1)
             c_t, _ = self.attention(s_prev, hidden_encoder)
+            c_t = self.dropout_att(c_t)
             x_in = torch.cat((x_t, c_t), dim=-1)
             s_prev, _ = self.gru(x_in,s_prev.permute(1,0,2)) # had to permute because s_prev is dims B,1,H but but the input expects to be 1,B,H
+            s_prev = self.dropout_gru(s_prev) # questionable dropout, to be reconsidered
             hidden_decoder[:, t, :] = s_prev.squeeze(1)
 
         out = self.out(hidden_decoder)
