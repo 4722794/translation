@@ -88,7 +88,7 @@ class AddAttention(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, V, E, H):
         super().__init__()
-        self.embedding = nn.Embedding(V, E)
+        self.embedding = nn.Embedding(V, E,scale_grad_by_freq=True)
         self.attention = AddAttention(H)
         self.gru = nn.GRU(E + 2 * H, H, batch_first=True)
         self.out = nn.Linear(H, V)

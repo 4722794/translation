@@ -55,15 +55,14 @@ def calculate_bleu_score(outs, x_t, dataset, EOS_token, device):
 # basic translation
 
 
-def token_to_sentence(outs, dataset, EOS_token):
+def token_to_sentence(outs,dataset,EOS_token):
     preds = outs.to("cpu")
     mask = preds == EOS_token
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
-    out_list = preds.tolist()
+    out_list = preds.long().tolist()
     preds = [dataset.sp_t.Decode(i) for i in out_list]
     return preds
-
 
 def evaluate_show_attention(model, sentence, dataset, EOS_token):
     x_test = dataset.from_sentence_list("source", [sentence])

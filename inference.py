@@ -14,10 +14,11 @@ from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, train_loop, valid_loop, evaluate_show_attention
+from scripts.utils import calculate_bleu_score, valid_loop, evaluate_show_attention,token_to_sentence
 import wandb
 from dotenv import load_dotenv
 import os
+import evaluate
 
 
 # %%
@@ -26,21 +27,30 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
-checkpoint_path = Path(f"{model_path}/Baseline_checkpoint.pt")
+checkpoint_path = Path(f"{model_path}/dropouts_checkpoint.tar")
+
+df = pd.read_csv(f"{data_path}/fra-eng.csv")
+dataset = TranslationDataset(df, from_file=True)
 
 config = dict(
-    epochs=50,
+    epochs=100,
     batch_size=512,
     vocab_source=5001,
     vocab_target=5001,
     embedding_size=256,
     hidden_size=256,
     device=device,
-    lr=3e-4,
+    lr=1e-3,
 )
 
-df = pd.read_csv(f"{data_path}/fra-eng.csv")
-dataset = TranslationDataset(df, from_file=True)
+model = TranslationNN(
+    config["vocab_source"],
+    config["vocab_target"],
+    config["embedding_size"],
+    config["hidden_size"],
+)
+model.to(device)
+
 
 # %%
 # instantiate params
@@ -51,16 +61,14 @@ model = TranslationNN(
     config["hidden_size"],
 )
 model.to(device)
-optim = AdamW(model.parameters(), lr=config["lr"])
+
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 
 checkpoint = torch.load(checkpoint_path, map_location=device)
 # load checkpoint details
 model.load_state_dict(checkpoint["nn_state"])
-optim.load_state_dict(checkpoint["opt_state"])
 epoch = checkpoint["epoch"]
 loss = checkpoint["loss"]
-
 # %%
 # make dataloaders
 collate_fn = lambda x: (pad_sequence(i, batch_first=True) for i in x)
@@ -101,7 +109,7 @@ eval_loss =  torch.zeros(len(val_loader))
 eval_loss = valid_loop(val_loader, model, loss_fn, eval_loss, device)
 # get the averaged validation loss
 eval_loss = eval_loss.mean()
-print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f}")
+print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f} \n stored value is {loss:.4f}")
 
 
 # %%
@@ -142,22 +150,43 @@ x_test = dataset.from_sentence_list('source',source_sentences)
 
 outs,weights = model.evaluate(x_test)
 
-def token_to_sentence(outs,dataset,EOS_token):
-    preds = outs.to("cpu")
-    mask = preds == EOS_token
-    correctmask = mask.cumsum(dim=1) != 0
-    preds[correctmask] = 0
-    out_list = preds.long().tolist()
-    preds = [dataset.sp_t.Decode(i) for i in out_list]
-    return preds
-
 
 preds = token_to_sentence(outs,dataset,EOS_token) 
 
-
 # %%
-eg_sent = source_sentences[0]
+eg_sent = source_sentences[-1]
 
 
 evaluate_show_attention(model,eg_sent,dataset,EOS_token)
 #%%
+
+# save files for measure
+bleu = evaluate.load("bleu") 
+pred_path = root_path/'mt.txt'
+groundtruth = root_path/'groundtruth.txt'
+preds_list = []
+actuals_list = []
+
+for xs,xt,_ in test_loader:
+    with torch.no_grad():
+        model.to(device)
+        xt,xs = xt.to(device),xs.to(device)
+        outs, _ = model.evaluate(xs)
+    preds = token_to_sentence(outs,dataset,EOS_token)
+    preds_list.extend(preds)
+    actuals = token_to_sentence(xt,dataset,EOS_token)
+    actuals_list.extend(actuals)
+
+# with open(pred_path,'w') as f:
+#     f.writelines('\n'.join(preds_list))
+
+# with open(groundtruth,'w') as f:
+#     f.writelines('\n'.join(actuals_list))
+
+# %%
+predictions = preds_list
+references = [[i] for i in actuals_list]
+# %
+score = bleu.compute(predictions=predictions,references=references)
+print(f"BLEU score is {100*score['bleu']:.4f}")
+# %%

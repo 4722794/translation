@@ -12,10 +12,11 @@ from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, train_loop, valid_loop,forward_pass,CustomAdam,save_checkpoint
+from scripts.utils import token_to_sentence, train_loop, valid_loop,forward_pass,CustomAdam,save_checkpoint
 import wandb
 from dotenv import load_dotenv
 import os
+import evaluate # this is a hugging face library
 
 load_dotenv()
 
@@ -77,7 +78,6 @@ if not checkpoint_path.exists():
 else:
     checkpoint = torch.load(checkpoint_path)
 # to save update/dataratio
-
 # %%
 # make dataloaders
 collate_fn = lambda x: (pad_sequence(i, batch_first=True) for i in x)
@@ -114,7 +114,8 @@ test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate
 # %%
 # wandb section
 wandb.login(key=api_key)
-run = wandb.init(project="french", name="Skip connections", config=config)
+
+run = wandb.init(project="french", name="Dropouts-take2", config=config)
 
 wandb.watch(model, log_freq=100)
 
@@ -122,7 +123,7 @@ EOS_token = 2
 num_epochs = config["epochs"]
 update_data_ratio_batch = []
 keys = [f'batch/{n}' for n,p in model.named_parameters() if len(p.shape)==2]
-
+bleu_compute = evaluate.load("bleu")
 def train_loop(loader, model, optim, scheduler, loss_fn, loss_tensor, epoch,device):
     model.to(device)
     model.train()
@@ -159,24 +160,25 @@ for epoch in range(num_epochs):
         check_point = save_checkpoint(checkpoint_path, model,epoch,eval_loss, optim, scheduler)
         
 
-    scores = []
+    preds_list, actuals_list = list(), list()
     for x_s, x_t, y in test_loader:
         with torch.no_grad():
             model.to(inference_device)
             x_s, x_t = x_s.to(inference_device), x_t.to(inference_device)
             outs, _ = model.evaluate(x_s)
-        score = calculate_bleu_score(
-            outs, x_t, dataset, EOS_token, device=inference_device
-        )
-        scores.append(score)
+        preds = token_to_sentence(outs,dataset,EOS_token)
+        actuals = token_to_sentence(x_t,dataset,EOS_token)
+        preds_list.extend(preds); actuals_list.extend(actuals)
+    predictions = preds_list
+    references = [[i] for i in actuals_list]
+    score = bleu_compute(predictions, references)
 
-    mean_score = torch.tensor(scores).mean()
-    print(f"Mean BLEU score is {mean_score:.4f}")
+    print(f"Mean BLEU score is {score:.4f}")
     metrics = {
         "baseplots/epoch": epoch,
         "baseplots/train_loss": train_loss,
         "baseplots/val_loss": eval_loss,
-        "baseplots/bleu_score": mean_score,
+        "baseplots/bleu_score": score,
     }
     run.log(metrics)
 wandb.finish()
