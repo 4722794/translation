@@ -18,8 +18,6 @@ class Encoder(nn.Module):
         self.gru = nn.GRU(E, H, batch_first=True, bidirectional=True)
         self.dropout = nn.Dropout(0.5) # later improve this by letting this be a heuristic parameter
         self.weight_init()
-        # layer norm, not sure if this makes sense
-        self.layer_norm = nn.LayerNorm(H*2)
 
     def weight_init(self):
         # use a kaiming init
@@ -39,7 +37,6 @@ class Encoder(nn.Module):
         all_h_packed, _ = self.gru(x_pack)
         all_h, _ = pad_packed_sequence(all_h_packed, batch_first=True)
         all_h = self.dropout(all_h)
-        all_h = self.layer_norm(all_h)
         return all_h
         # return all hidden states
 
@@ -93,9 +90,6 @@ class Decoder(nn.Module):
         self.gru = nn.GRU(E + 2 * H, H, batch_first=True)
         self.out = nn.Linear(H, V)
         self.initialW = nn.Parameter(torch.randn(H, H))
-        #skip connections
-        self.linear_skip = nn.Linear(E,V)
-        self.gru_skip = nn.Linear(E,H)
         # dropouts
         self.dropout_emb = nn.Dropout(0.3)
         self.dropout_att = nn.Dropout(0.3)
@@ -126,16 +120,15 @@ class Decoder(nn.Module):
         s_prev = hidden_encoder[:, :1, H:] @ self.initialW  # shape B,1,H
         hidden_decoder = self.hidden_decoder.repeat(B, T, 1)
         for t in range(T):
-            x_t = x_emb[:, t, :].unsqueeze(1) #B,1,E
-            x_t_skip = self.gru_skip(x_t) #B,1,H
+            x_t = x_emb[:, t, :].unsqueeze(1)
             c_t, _ = self.attention(s_prev, hidden_encoder)
             c_t = self.dropout_att(c_t)
             x_in = torch.cat((x_t, c_t), dim=-1)
-            s_prev, _ = self.gru(x_in,s_prev.permute(1,0,2)) + x_t_skip # had to permute because s_prev is dims B,1,H but but the input expects to be 1,B,H
+            s_prev, _ = self.gru(x_in,s_prev.permute(1,0,2)) # had to permute because s_prev is dims B,1,H but but the input expects to be 1,B,H
             s_prev = self.dropout_gru(s_prev) # questionable dropout, to be reconsidered
             hidden_decoder[:, t, :] = s_prev.squeeze(1)
 
-        out = self.out(hidden_decoder) + self.linear_skip(x_emb)
+        out = self.out(hidden_decoder)
 
         return out
 
