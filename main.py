@@ -29,6 +29,8 @@ root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
 checkpoint_path = Path(f"{model_path}/checkpoint.tar")
+pretrained_path = Path(f"{model_path}/pretrained_checkpoint.tar")
+pretrained_checkpoint = torch.load(pretrained_path)
 
 config = dict(
     epochs=100,
@@ -54,10 +56,14 @@ model = TranslationNN(
     config["embedding_size"],
     config["hidden_size"],
 )
-model.to(device)
 
+encoder_weights = {k.replace('encoder.',''):v for k,v in pretrained_checkpoint['nn_state'].items() if 'encoder' in k}
+model.to(device)
+#%%
+model.encoder.load_state_dict(encoder_weights,strict=False)
+#%%
 param_options = [
-    {'params':model.encoder.parameters(),'lr':0.5*config["lr"]},
+    {'params':model.encoder.parameters(),'lr':0.03*config["lr"]},
     {'params':model.decoder.parameters()}]
 optim = CustomAdam(param_options, lr=config["lr"])
 #%%
@@ -115,7 +121,7 @@ test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate
 # wandb section
 wandb.login(key=api_key)
 
-run = wandb.init(project="french", name="Dropouts-take2", config=config)
+run = wandb.init(project="french", name="Dropouts-take3", config=config)
 
 wandb.watch(model, log_freq=100)
 
@@ -123,7 +129,7 @@ EOS_token = 2
 num_epochs = config["epochs"]
 update_data_ratio_batch = []
 keys = [f'batch/{n}' for n,p in model.named_parameters() if len(p.shape)==2]
-bleu_compute = evaluate.load("bleu")
+bleu = evaluate.load("bleu")
 def train_loop(loader, model, optim, scheduler, loss_fn, loss_tensor, epoch,device):
     model.to(device)
     model.train()
@@ -159,6 +165,9 @@ for epoch in range(num_epochs):
     if eval_loss < checkpoint["loss"]:
         check_point = save_checkpoint(checkpoint_path, model,epoch,eval_loss, optim, scheduler)
         
+    if eval_loss < checkpoint["loss"]:
+        check_point = save_checkpoint(checkpoint_path, model,epoch,eval_loss, optim, scheduler)
+        
 
     preds_list, actuals_list = list(), list()
     for x_s, x_t, y in test_loader:
@@ -171,7 +180,10 @@ for epoch in range(num_epochs):
         preds_list.extend(preds); actuals_list.extend(actuals)
     predictions = preds_list
     references = [[i] for i in actuals_list]
-    score = bleu_compute(predictions, references)
+    try:
+        score = bleu.compute(predictions=predictions, references=references)['bleu']
+    except ZeroDivisionError:
+        score = 0
 
     print(f"Mean BLEU score is {score:.4f}")
     metrics = {
@@ -182,5 +194,4 @@ for epoch in range(num_epochs):
     }
     run.log(metrics)
 wandb.finish()
-
 # %%

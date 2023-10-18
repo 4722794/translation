@@ -10,5 +10,12 @@
 
 # LRschedule Branch
 
-- In this commit, I've added layernorm in the encoder and skip connections in the decoder
-- The previous commit showed great promise as I added dropouts, so I am encouraged to experiment further
+- In this commit, I'm optimizing on the current model.
+
+Current progress
+- Change in bleu score computation
+- Ran one iteration with a pretrained model
+
+
+Pending
+- introduce sweeps
