@@ -12,11 +12,11 @@ EOS_token = 2
 
 # step 2: define encoder
 class Encoder(nn.Module):
-    def __init__(self, V, E, H):
+    def __init__(self, V, E, H,dropout_ratio):
         super(Encoder, self).__init__()
         self.embedding = nn.Embedding(V, E, max_norm=1, scale_grad_by_freq=True)
         self.gru = nn.GRU(E, H, batch_first=True, bidirectional=True)
-        self.dropout = nn.Dropout(0.5) # later improve this by letting this be a heuristic parameter
+        self.dropout = nn.Dropout(dropout_ratio) # later improve this by letting this be a heuristic parameter
         self.weight_init()
 
     def weight_init(self):
@@ -83,7 +83,7 @@ class AddAttention(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, V, E, H):
+    def __init__(self, V, E, H,dropout_ratio):
         super().__init__()
         self.embedding = nn.Embedding(V, E,scale_grad_by_freq=True)
         self.attention = AddAttention(H)
@@ -91,9 +91,9 @@ class Decoder(nn.Module):
         self.out = nn.Linear(H, V)
         self.initialW = nn.Parameter(torch.randn(H, H))
         # dropouts
-        self.dropout_emb = nn.Dropout(0.3)
-        self.dropout_att = nn.Dropout(0.3)
-        self.dropout_gru = nn.Dropout(0.3)
+        self.dropout_emb = nn.Dropout(dropout_ratio)
+        self.dropout_att = nn.Dropout(dropout_ratio)
+        self.dropout_gru = nn.Dropout(dropout_ratio)
         self.weight_init()
         nn.init.normal_(self.out.weight, 0, 0.01)
         nn.init.zeros_(self.out.bias)
@@ -151,10 +151,10 @@ class Decoder(nn.Module):
 
 
 class TranslationNN(nn.Module):
-    def __init__(self, V_s, V_t, E, H):
+    def __init__(self, V_s, V_t, E, H,drop_e,drop_d):
         super(TranslationNN, self).__init__()
-        self.encoder = Encoder(V_s, E, H)
-        self.decoder = Decoder(V_t, E, H)
+        self.encoder = Encoder(V_s, E, H,drop_e)
+        self.decoder = Decoder(V_t, E, H,drop_d)
 
         # register buffers
 

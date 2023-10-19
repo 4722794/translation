@@ -1,4 +1,5 @@
 #!python3 utils.py
+#%%
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from torch.optim.lr_scheduler import _LRScheduler
 import numpy as np
-
+import wandb
 # need attention maps
 
 # attention stuff
@@ -55,13 +56,13 @@ def calculate_bleu_score(outs, x_t, dataset, EOS_token, device):
 # basic translation
 
 
-def token_to_sentence(outs,dataset,EOS_token):
+def token_to_sentence(outs,tokenizer):
     preds = outs.to("cpu")
-    mask = preds == EOS_token
+    mask = preds == tokenizer.piece_to_id('</s>') # this should be 2
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
     out_list = preds.long().tolist()
-    preds = [dataset.sp_t.Decode(i) for i in out_list]
+    preds = [tokenizer.Decode(i) for i in out_list]
     return preds
 
 def evaluate_show_attention(model, sentence, dataset, EOS_token):
@@ -96,9 +97,17 @@ def forward_pass(batch, model, loss_fn, device):
     return loss
 
 
-def train_loop(loader, model, optim, loss_fn, loss_tensor, device):
+def log_loss(loss,iteration,epoch,train=True):
+    prefix = 'train' if train else 'val'
+    wandb.log({f"iterplots/{prefix}loss":loss.item(),"iterplots/iteration":iteration,"iterplots/epoch":epoch})
+    if iteration % 100 == 0:
+        print(f'Loss after {iteration} iterations is {loss.item():.4f}')
+
+
+def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device):
     model.to(device)
     model.train()
+    loss_tensor = torch.zeros(len(loader))
     for c, batch in enumerate(loader):
         loss = forward_pass(batch, model, loss_fn, device)
         # backprop step
@@ -106,18 +115,24 @@ def train_loop(loader, model, optim, loss_fn, loss_tensor, device):
         loss.backward()
         # optimization step
         optim.step()
+        # scheduler step
+        if scheduler is not None:
+            scheduler.step(epoch + c / len(loader))
+        iteration = len(loader)*epoch + c
+        log_loss(loss,iteration,epoch)
         loss_tensor[c] = loss.item()
-    return loss_tensor
+    return loss_tensor.mean()
 
-
-def valid_loop(loader, model, loss_fn, loss_tensor, device):
+def valid_loop( model, loader,loss_fn, device):
     model.to(device)
     model.eval()
+    loss_tensor = torch.zeros(len(loader))
     for c, batch in enumerate(loader):
         with torch.inference_mode():
             loss = forward_pass(batch, model, loss_fn, device)
         loss_tensor[c] = loss.item()
-    return loss_tensor
+    return loss_tensor.mean()
+
 
 # custom optimizer
 
@@ -174,3 +189,32 @@ def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler):
     }
     torch.save(checkpoint, checkpoint_path)
     return checkpoint
+
+
+#%%
+
+    ### GARBAGE ZONE
+
+
+def train(model,loader,val_loader,loss_fn,optimizer,scheduler,config,device):
+    wandb.watch(model,loss_fn,log="all",log_freq=10)
+
+    num_epochs = 20000/ len(loader) # 20000 rougly corresponds to 5 epochs if batch size is 512
+    for epoch in range(num_epochs):
+        for c,batch in enumerate(loader):
+            loss = forward_pass(batch,model,loss_fn,device)
+            # backprop step
+            optimizer.zero_grad()
+            loss.backward()
+            # optimization step
+            optimizer.step()
+            # scheduler step
+            if scheduler:
+                scheduler.step(epoch + c/len(loader))
+            iteration = len(loader)*epoch + c
+            log_loss(loss,iteration,epoch)
+
+        for c,batch in enumerate(val_loader):
+            loss = forward_pass(batch,model,loss_fn,device)
+            iteration = len(loader)*epoch + c
+            log_loss(loss,iteration,epoch)

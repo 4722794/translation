@@ -27,13 +27,13 @@ token_t.Load(str(t_tokenizer_path))
 
 class TranslationDataset(Dataset):
     
-    def __init__(self,df,from_file=False):
+    def __init__(self,df,token_s,token_t):
         super().__init__()
         self.sp_s, self.sp_t = token_s, token_t
         self.sp_s.SetEncodeExtraOptions('eos')
         self.sp_t.SetEncodeExtraOptions('bos:eos')
         df = self.read_file(df)
-        self.X_s, self.X_t,self.Y = self.codex(df,from_file)
+        self.X_s, self.X_t,self.Y = self.codex(df)
 
     def __len__(self):
         return len(self.X_s.data)
@@ -44,18 +44,11 @@ class TranslationDataset(Dataset):
     def __getitems__(self,idx):
         return self.X_s[idx], self.X_t[idx],self.Y[idx]
     
-    def codex(self,df,from_file=False):
-        # read the file
-        if from_file:
-            s_tokens = pd.read_csv(f'{data_path}/source.csv', header=None)[0].apply(ast.literal_eval)
-            t_tokens = pd.read_csv(f'{data_path}/target.csv', header=None)[0].apply(ast.literal_eval)
+    def codex(self,df):
+       
+        s_tokens = df.iloc[:,0].apply(lambda x: self.sp_s.EncodeAsIds(x))
+        t_tokens = df.iloc[:,1].apply(lambda x: self.sp_t.EncodeAsIds(x))
 
-        else:
-            s_tokens = df.iloc[:,0].apply(lambda x: self.sp_s.EncodeAsIds(x))
-            t_tokens = df.iloc[:,1].apply(lambda x: self.sp_t.EncodeAsIds(x))
-            s_tokens.to_csv(f'{data_path}/source.csv',index=False,header=False)
-            t_tokens.to_csv(f'{data_path}/target.csv',index=False,header=False)
-        
         x_s,x_t, y = self.series_to_tensor(s_tokens,t_tokens)
         return x_s,x_t,y
     
@@ -99,6 +92,7 @@ class TranslationDataset(Dataset):
 #%%
 if __name__ == '__main__':
     df = pd.read_csv(f'{data_path}/fra-eng.csv')
-    dataset = TranslationDataset(df,from_file=True)
+    dataset = TranslationDataset(df)
     
 # %%
+
