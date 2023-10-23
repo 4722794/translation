@@ -17,17 +17,10 @@ class EncoderND(nn.Module):
         self.base_gru = nn.GRU(E, H, batch_first=True, bidirectional=True)
         self.layer_grus = nn.ModuleList([nn.GRU(2*H, H, batch_first=True, bidirectional=True) for _ in range(n-1)])
         self.dropout = nn.Dropout(dropout_ratio) # later improve this by letting this be a heuristic parameter
-        self.weight_init()
 
         # registers
         self.register_buffer("hidden_encoder", torch.zeros(n,1, 1, 2*H))
-    def weight_init(self):
-        # use a kaiming init
-        for name, param in self.named_parameters():
-            if "weight" in name:
-                nn.init.kaiming_normal_(param)
-            else:
-                nn.init.zeros_(param)
+
 
     def forward(self, x):
         B, T = x.shape
@@ -39,11 +32,11 @@ class EncoderND(nn.Module):
         all_nh = self.hidden_encoder.repeat(1,B,T,1)
         all_h_packed, _ = self.base_gru(x_pack)
         all_h_unpacked, _ = pad_packed_sequence(all_h_packed, batch_first=True)
-        all_nh[0,:,:,:] = all_h_unpacked
+        all_nh[0,:,:,:] = self.dropout(all_h_unpacked)
         for n,gru in enumerate(self.layer_grus,1):
             all_h_packed,_ = gru(all_h_packed)
             all_h_unpacked,_ = pad_packed_sequence(all_h_packed, batch_first=True)
-            all_nh[n,:,:,:] = all_h_unpacked
+            all_nh[n,:,:,:] = self.dropout(all_h_unpacked)
         return all_nh
         # return all hidden states
 
@@ -121,7 +114,7 @@ class DotAttention(nn.Module):
         super().__init__()
         self.Wq = nn.Linear(hidden_size,head_size)
         self.Wk = nn.Linear(2*hidden_size,head_size)
-        self.Wv = nn.Linear(2*hidden_size,head_size)
+        self.Wv = nn.Linear(2*hidden_size,2*head_size)
         
         self.head_size = head_size
     def forward(self,query,keys):
@@ -153,7 +146,8 @@ class MultiDot(nn.Module):
         query dim: B,1,H
         """
         context = torch.cat([head(query,keys)[0] for head in self.heads],dim=-1)
-        return context
+        weights = None # logic to be added later
+        return context, weights
 #%%
 # attn = AddAttention(4)
 # q = torch.randn(4,1,4)
@@ -175,48 +169,52 @@ class DecoderND(nn.Module):
         self.layer_grus = nn.ModuleList([nn.GRU(3*H,H,batch_first=True) for _ in range(n-1)])
         self.out = nn.Linear(H,V)
         self.initialWs = nn.Parameter(torch.randn(n,H,H))
-        
+        # dropouts
+        self.dropout_emb = nn.Dropout(dropout_ratio)
+        self.dropout_att = nn.Dropout(dropout_ratio)
+        self.dropout_gru = nn.Dropout(dropout_ratio)
         # number of layers param
         self.num_layers = n
         self.register_buffer("hidden_decoder",torch.zeros(1,1,H))
 
-    def forward(self,x,all_hidden_encoder):
+    def attention_block(self,x,hidden_encoder,layer_num,s_prev=None):
         H = self.base_gru.hidden_size
-        x_emb = self.embedding(x)
-        B,T,E = x_emb.shape
-        skip_h_decoder = self.hidden_decoder.repeat(B,T,1)
-        for n in range(self.num_layers):
-            hidden_encoder = all_hidden_encoder[n,:,:,:]
-            x_emb = self.attention_block(x_emb,hidden_encoder,n)
-            skip_h_decoder += x_emb
-        out = self.out(skip_h_decoder)
-
-        return out
-        
-
-    def attention_block(self,x,hidden_encoder,layer_num):
-        H = self.base_gru.hidden_size
-        B,T,E = x.shape
-        s_prev = hidden_encoder[:,:1,H:] @ self.initialWs[layer_num]
+        B,T,E = x.shape 
+        s_prev = s_prev if s_prev is not None else hidden_encoder[:,:1,H:] @ self.initialWs[layer_num] # B,1,H
         hidden_decoder = self.hidden_decoder.repeat(B,T,1)
         for t in range(T):
             x_t = x[:,t,:].unsqueeze(1) # B,1,E for the first case
             c_t, _ = self.attention(s_prev,hidden_encoder)
+            c_t = self.dropout_att(c_t)
             x_in = torch.cat((x_t,c_t),dim=-1) # B,T,E+2H for the first one
             if layer_num == 0:
                 s_prev,_ = self.base_gru(x_in,s_prev.permute(1,0,2))
             else:
                 s_prev,_ = self.layer_grus[layer_num-1](x_in,s_prev.permute(1,0,2))
+            s_prev = self.dropout_gru(s_prev)
             hidden_decoder[:,t,:] = s_prev.squeeze(1)
         
         return hidden_decoder
 
-    def evaluate(self,x,all_hidden_encoder):
+    def forward(self,x_t,all_hidden_encoder,s_prev=None):
+        H = self.base_gru.hidden_size
+        x_emb = self.embedding(x_t)
+        x_emb = self.dropout_emb(x_emb)
+        B,T,E = x_emb.shape
+        skip_h_decoder = self.hidden_decoder.repeat(B,T,1)
+        for n in range(self.num_layers):
+            hidden_encoder = all_hidden_encoder[n,:,:,:]
+            x_emb = self.attention_block(x_emb,hidden_encoder,n,s_prev)
+            skip_h_decoder += x_emb
+            x_emb = self.dropout_emb(x_emb)
+        out = self.out(skip_h_decoder)
+
+        return out
+        
+
+    def evaluate(self,x_t,all_hidden_encoder,s_prev):
         with torch.no_grad():
-            H = self.base_gru.hidden_size
-            x_emb = self.embedding(x)
-            B,T,E = x_emb.shape
-            
+            return self.forward(x_t,all_hidden_encoder,s_prev)
 
 
 class Decoder(nn.Module):
@@ -277,10 +275,6 @@ class Decoder(nn.Module):
 
         return out, s_prev, weights
 
-
-# %%
-
-
 class TranslationNN(nn.Module):
     def __init__(self, V_s, V_t, E, H,drop_e,drop_d):
         super(TranslationNN, self).__init__()
@@ -317,3 +311,51 @@ class TranslationNN(nn.Module):
                 counter += 1
 
         return outs, weights
+    
+
+class TranslationDNN(nn.Module):
+
+    def __init__(self,V_s,V_t,E,H,drop_e,drop_d,n,dot=False):
+        super().__init__()
+        self.encoder = EncoderND(V_s,E,H,drop_e,n)
+        self.decoder = DecoderND(V_t,E,H,drop_d,n,dot=dot)
+        
+        # initialize weights
+        self.apply(self._init_weights)
+        # register buffers
+
+        self.register_buffer("x_init", torch.ones(1, 1).long())
+
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    def forward(self, x_s, x_t):
+        all_h_enc = self.encoder(x_s)
+        out = self.decoder(x_t, all_h_enc)
+        return out
+
+    def evaluate(self, x_s, MAXLEN=30):
+        with torch.no_grad():
+            all_hidden_encoder = self.encoder.evaluate(x_s)
+            n,B, T, H = all_hidden_encoder.shape
+            H = H // 2
+            x_t = self.x_init.repeat(B, 1)
+            s_prev = None
+            counter = 0
+            outs = torch.zeros(B, MAXLEN)
+            while (
+                not torch.all(torch.any(outs == EOS_token, dim=1), dim=0).item()
+            ) and (counter < MAXLEN):
+                out = self.decoder.evaluate(x_t, all_hidden_encoder, s_prev)
+                probs = F.softmax(out, dim=-1)
+                x_t = torch.argmax(probs, axis=-1)
+                outs[:, counter] = x_t.squeeze(1)
+                counter += 1
+
+            return outs
+            
