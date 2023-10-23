@@ -18,7 +18,9 @@ from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
 from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu
-
+import yaml
+from dataclasses import make_dataclass
+from tqdm.auto import tqdm
 load_dotenv()
 
 # %%
@@ -29,6 +31,14 @@ data_path = root_path / "data"
 train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
+
+with open('config/config.yaml') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+
+fields = [(k,type(v)) for k,v in config.items()]
+DotDict = make_dataclass('DotDict',fields)
+conf = DotDict(**config)
+
 #%%
 def main(config=None):
     
@@ -42,7 +52,7 @@ def main(config=None):
         # get loaders
         train_loader,val_loader,test_loader = get_dataloader(train_set,c.batch_size), get_dataloader(val_set,c.batch_size), get_dataloader(test_set,c.batch_size)
         # get model
-        model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout)
+        model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout,c.num_layers,c.dot_product)
         # get optimizer
         optim = get_optimizer(model, c.optimizer, c.learning_rate)
         # OPTIONAL: get_scheduler
@@ -53,22 +63,25 @@ def main(config=None):
         # loss fn
         loss_fn = nn.CrossEntropyLoss(reduction="none")
         # training loop
-        num_epochs = 10 # hard coding this value for now until further discussion
-        for epoch in range(num_epochs):
+        num_epochs = c.num_epochs # hard coding this value for now until further discussion
+        for epoch in tqdm(range(num_epochs)):
             print(f"Epoch {epoch+1}")
             train_loss = train_loop(model, train_loader, loss_fn, optim,scheduler,epoch, device)
             print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
             val_loss = valid_loop(model, val_loader, loss_fn, device)
             print(f"Validation Loss for Epoch {epoch+1} is {val_loss:.4f}")
-            bleu_score = get_bleu(model, test_loader, device)
-            print(f"Mean BLEU score is {bleu_score:.4f}")
+            bleu_score_test = get_bleu(model, test_loader, device)
+            bleu_score_val = get_bleu(model,val_loader,device)
+            print(f"Mean BLEU score is {bleu_score_val:.4f}")
             metrics = {
                 "baseplots/epoch": epoch,
                 "baseplots/train_loss": train_loss,
                 "baseplots/val_loss": val_loss,
-                "baseplots/bleu_score": bleu_score,
+                "baseplots/bleu_score_val": bleu_score_val,
+                "baseplots/bleu_score_test": bleu_score_test
             }
             wandb.log(metrics)
-        wandb.log({"bleu":bleu_score})
+        wandb.log({"bleu":bleu_score_test})
 
-wandb.agent("t07ceg1b",main,count=2,project="sweepstakes")
+main(conf)
+# wandb.agent("qral3qfn",main,count=20,project="sweepstakes")

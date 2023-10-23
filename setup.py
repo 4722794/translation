@@ -11,7 +11,7 @@ from pathlib import Path
 from scripts.dataset import (
     TranslationDataset,
 )  # The logic of TranslationDataset is defined in the file dataset.py
-from scripts.model import TranslationNN
+from scripts.model import TranslationDNN
 from scripts.utils import token_to_sentence, train_loop, valid_loop,forward_pass,CustomAdam,save_checkpoint,CustomScheduler
 import wandb
 from dotenv import load_dotenv
@@ -46,8 +46,8 @@ def get_dataloader(dataset,batch_size,shuffle=True):
 
 # get model
 
-def get_model(vocab_source,vocab_target,emb_size,hidden_size,dropout_encoder,dropout_decoder):
-    model = TranslationNN(V_s=vocab_source,V_t=vocab_target,E=emb_size,H=hidden_size,drop_e=dropout_encoder,drop_d=dropout_decoder)
+def get_model(vocab_source,vocab_target,emb_size,hidden_size,dropout_encoder,dropout_decoder,num_layers,dot_product):
+    model = TranslationDNN(V_s=vocab_source,V_t=vocab_target,E=emb_size,H=hidden_size,drop_e=dropout_encoder,drop_d=dropout_decoder,n=num_layers,dot=dot_product)
     return model
 
 # get optimizer

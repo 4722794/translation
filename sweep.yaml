@@ -1,0 +1,32 @@
+method: random
+metric:
+    name: bleu
+    goal: maximize
+parameters:
+    num_epochs:
+        value: 10
+    vocab_source:
+        value: 5001
+    vocab_target:
+        value: 5001
+    optimizer:
+        value: 'adamw'
+    scheduler:
+        value: 'cosine'
+    dropout:
+        value: 0.4
+    embedding_size:
+        value: 128
+    hidden_size:
+        value: 512
+    batch_size:
+        value: 64
+    learning_rate:
+        distribution: log_uniform_values
+        min: 0.0001
+        max: 0.001
+    num_layers:
+        values: [1,2,3,4]
+    dot_product:
+        values: [true,false]
+    
