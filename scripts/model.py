@@ -356,6 +356,6 @@ class TranslationDNN(nn.Module):
                 x_t = torch.argmax(probs, axis=-1)
                 outs[:, counter] = x_t.squeeze(1)
                 counter += 1
-
-            return outs
+            weights = None # setting for now
+            return outs,weights
             

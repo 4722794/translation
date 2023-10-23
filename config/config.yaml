@@ -8,5 +8,5 @@ hidden_size: 512
 embedding_size: 128
 learning_rate: 0.001
 batch_size: 64
-num_layers: 4
-dot_product: true
+num_layers: 1
+dot_product: false

@@ -29,4 +29,5 @@ parameters:
         values: [1,2,3,4]
     dot_product:
         values: [true,false]
+        probabilities: [0.2,0.8]
     
