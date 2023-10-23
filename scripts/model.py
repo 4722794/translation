@@ -204,17 +204,36 @@ class DecoderND(nn.Module):
         skip_h_decoder = self.hidden_decoder.repeat(B,T,1)
         for n in range(self.num_layers):
             hidden_encoder = all_hidden_encoder[n,:,:,:]
-            x_emb = self.attention_block(x_emb,hidden_encoder,n,s_prev)
-            skip_h_decoder += x_emb
+            hidden_decoder = self.attention_block(x_emb,hidden_encoder,n,s_prev)
+            skip_h_decoder += hidden_decoder
+            x_emb = hidden_decoder
             x_emb = self.dropout_emb(x_emb)
         out = self.out(skip_h_decoder)
 
         return out
         
 
-    def evaluate(self,x_t,all_hidden_encoder,s_prev):
+    def evaluate(self, x_t, all_hidden_encoder, s_prevs):
         with torch.no_grad():
-            return self.forward(x_t,all_hidden_encoder,s_prev)
+            H = self.base_gru.hidden_size
+            x_emb = self.embedding(x_t)
+            B, T, E = x_emb.shape
+            skip_h_decoder = self.hidden_decoder.repeat(B, 1, 1)
+            new_s_prevs = []
+            
+            for n in range(self.num_layers):
+                hidden_encoder = all_hidden_encoder[n, :, :, :]
+                s_prev = s_prevs[n]
+                hidden_decoder = self.attention_block(x_emb, hidden_encoder, n, s_prev)
+                skip_h_decoder += hidden_decoder
+                x_emb = hidden_decoder
+                new_s_prevs.append(hidden_decoder)  # The last state is the s_prev
+            
+            out = self.out(skip_h_decoder)
+        
+        return out, new_s_prevs
+
+                
 
 
 class Decoder(nn.Module):
@@ -342,20 +361,22 @@ class TranslationDNN(nn.Module):
     def evaluate(self, x_s, MAXLEN=30):
         with torch.no_grad():
             all_hidden_encoder = self.encoder.evaluate(x_s)
-            n,B, T, H = all_hidden_encoder.shape
+            B, _, H = all_hidden_encoder[0].shape
             H = H // 2
             x_t = self.x_init.repeat(B, 1)
-            s_prev = None
+            
+            s_prevs = [None] * self.decoder.num_layers # daring to pass 'Nones' because I know that in the 'attention_block' code I am creating it if it is None
             counter = 0
-            outs = torch.zeros(B, MAXLEN)
-            while (
-                not torch.all(torch.any(outs == EOS_token, dim=1), dim=0).item()
-            ) and (counter < MAXLEN):
-                out = self.decoder.evaluate(x_t, all_hidden_encoder, s_prev)
+            outs = torch.zeros(B, MAXLEN).long()
+            
+            while not torch.all(torch.any(outs == EOS_token, dim=1)) and counter < MAXLEN:
+                out, new_s_prevs = self.decoder.evaluate(x_t, all_hidden_encoder, s_prevs)
                 probs = F.softmax(out, dim=-1)
                 x_t = torch.argmax(probs, axis=-1)
                 outs[:, counter] = x_t.squeeze(1)
                 counter += 1
-            weights = None # setting for now
-            return outs,weights
+                s_prevs = new_s_prevs  # Update s_prev for the next step
+
+        return outs
+
             
