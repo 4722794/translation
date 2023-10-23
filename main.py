@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
 from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu
+import yaml
+
 
 load_dotenv()
 
@@ -29,6 +31,10 @@ data_path = root_path / "data"
 train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
+
+# with open('config/config.yaml') as f:
+#     config = yaml.load(f, Loader=yaml.FullLoader)
+
 #%%
 def main(config=None):
     
@@ -53,7 +59,7 @@ def main(config=None):
         # loss fn
         loss_fn = nn.CrossEntropyLoss(reduction="none")
         # training loop
-        num_epochs = 10 # hard coding this value for now until further discussion
+        num_epochs = c.num_epochs # hard coding this value for now until further discussion
         for epoch in range(num_epochs):
             print(f"Epoch {epoch+1}")
             train_loss = train_loop(model, train_loader, loss_fn, optim,scheduler,epoch, device)
@@ -71,4 +77,4 @@ def main(config=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score})
 
-wandb.agent("t07ceg1b",main,count=2,project="sweepstakes")
+wandb.agent("1c581x2f",main,count=20,project="sweepstakes")

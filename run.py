@@ -4,7 +4,7 @@ import argparse
 from dotenv import load_dotenv
 import os
 load_dotenv()
-instance_id = os.getenv("instance_id")
+instance_id = os.getenv("INSTANCE_ID")
 # Add the optional argument
 # parser.add_argument("-s", "--stop", help="Stop Aws", action="store_true")
 # args = parser.parse_args()
