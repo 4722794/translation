@@ -83,5 +83,4 @@ def main(config=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score_test})
 
-main(conf)
-# wandb.agent("qral3qfn",main,count=20,project="sweepstakes")
+wandb.agent("ng27dyv9",main,count=20,project="sweepstakes")

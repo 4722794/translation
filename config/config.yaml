@@ -7,6 +7,6 @@ dropout: 0.4
 hidden_size: 512 
 embedding_size: 128
 learning_rate: 0.001
-batch_size: 64
+batch_size: 512
 num_layers: 1
 dot_product: false

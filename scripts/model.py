@@ -376,7 +376,7 @@ class TranslationDNN(nn.Module):
                 outs[:, counter] = x_t.squeeze(1)
                 counter += 1
                 s_prevs = new_s_prevs  # Update s_prev for the next step
-
-        return outs
+            weights = None
+        return outs, weights
 
             
