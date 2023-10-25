@@ -1,4 +1,4 @@
-num_epochs: 20
+num_epochs: 50
 vocab_source: 5001
 vocab_target: 5001
 optimizer: adamw # heuristic choice

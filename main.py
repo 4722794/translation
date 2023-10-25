@@ -34,8 +34,8 @@ train_path, val_path,test_path = data_path / "train/translations.csv", data_path
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
 
 # optional, if you want to remove existing checkpoint
-# if checkpoint_path.exists():
-#     checkpoint_path.unlink()
+if checkpoint_path.exists():
+    checkpoint_path.unlink()
 
 #%% init tokenizer, checkpoint
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
@@ -53,7 +53,7 @@ if not checkpoint_path.exists():
     raise Exception("No checkpoint found.")
 
 #%%
-def main(config=None,project=None,name=None):
+def main(config=None,project=None,name=None,checkpoint=None):
     
     # keep the entire code within the wandb context manager
 
@@ -91,13 +91,13 @@ def main(config=None,project=None,name=None):
                 "baseplots/train_loss": train_loss,
                 "baseplots/val_loss": val_loss,
                 "baseplots/bleu_score_val": bleu_score_val,
-                "baseplots/bleu_score_test": bleu_score_test
+                "baseplots/bleu_score": bleu_score_test
             }
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score_test})
 
 # run the experiment
-name = "GRU-6"
+name = "GRU-6-64"
 project_name="french"
 
-main(config=config,project=project_name,name=name)
+main(config=config,project=project_name,name=name,checkpoint=checkpoint)
