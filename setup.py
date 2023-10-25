@@ -101,3 +101,20 @@ def get_bleu(model, test_loader, device):
     return score
 
 #%%
+
+def init_checkpoint(config,checkpoint_path,device):
+    # instantiate params
+    model = get_model(config.vocab_source, config.vocab_target, config.embedding_size, config.hidden_size, config.dropout, config.dropout, config.num_layers, config.dot_product)
+    model.to(device)
+    optim = get_optimizer(model, config.optimizer, config.learning_rate)
+    scheduler = get_scheduler(optim, config.scheduler)
+    checkpoint = {
+        "nn_state": model.state_dict(),
+        "opt_state": optim.state_dict(),
+        "scheduler_state": scheduler.state_dict(),
+        "epoch": 0,
+        "loss": torch.inf,
+    }
+    torch.save(checkpoint, checkpoint_path)
+
+    return checkpoint

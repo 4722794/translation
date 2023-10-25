@@ -8,69 +8,49 @@ import pandas as pd
 from pathlib import Path
 from scripts.dataset import (
     TranslationDataset,
-)  # The logic of TranslationDataset is defined in the file dataset.py
-from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, train_loop, valid_loop,CustomScheduler
+)
+
 import wandb
 from dotenv import load_dotenv
-import os
-
+import os,yaml
+from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler
 load_dotenv()
+from dataclasses import make_dataclass
 
 api_key = os.getenv("WANDB_API_KEY")
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-inference_device = torch.device("cpu")
 
+# configure paths
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
 checkpoint_path = Path(f"{model_path}/checkpoint.pt")
+train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
+source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
+# get tokenizer
+source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
 
-config = dict(
-    epochs=100,
-    batch_size=512,
-    vocab_source=5001,
-    vocab_target=5001,
-    embedding_size=256,
-    hidden_size=256,
-    device=device,
-    lr=1e-4,
-)
+with open('config/config.yaml') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
 
-df = pd.read_csv(f"{data_path}/fra-eng.csv")
-# only taking first 100 elements
-dataset = TranslationDataset(df, from_file=False)
+fields = [(k,type(v)) for k,v in config.items()]
+DotDict = make_dataclass('DotDict',fields)
+c = DotDict(**config)
 
 # %%
-# instantiate params
-model = TranslationNN(
-    config["vocab_source"],
-    config["vocab_target"],
-    config["embedding_size"],
-    config["hidden_size"],
-)
-model.to(device)
-param_options = [
-    {'params':model.encoder.parameters(),'lr':3*config["lr"]},
-    {'params':model.decoder.embedding.parameters(),'lr':3*config["lr"]},
-    {'params':model.decoder.gru.parameters(),'lr':1e-4},
-    {'params':model.decoder.attention.parameters(),'lr':config["lr"]},
-    {'params':model.decoder.out.parameters(),'lr':0.5*config["lr"]},
-    {'params':model.decoder.initialW}
-]
-optim = AdamW(param_options, lr=config["lr"])
-scheduler = CustomScheduler(optim, freq_decay=0.5, amp_decay=0.95)
-loss_fn = nn.CrossEntropyLoss(reduction="none")
-
-#%%
-checkpoint = {
-    "nn_state": model.state_dict(),
-    "opt_state": optim.state_dict(),
-    "scheduler_state": scheduler.state_dict(),
-    "epoch": 0,
-    "loss": torch.inf,
-}
-
-torch.save(checkpoint, checkpoint_path)
+def init_checkpoint(config,checkpoint_path):
+    # instantiate params
+    model = get_model(config.vocab_source, config.vocab_target, config.embedding_size, config.hidden_size, config.dropout, config.dropout, config.num_layers, config.dot_product)
+    model.to(device)
+    optim = get_optimizer(model, config.optimizer, config.learning_rate)
+    scheduler = get_scheduler(optim, config.scheduler)
+    checkpoint = {
+        "nn_state": model.state_dict(),
+        "opt_state": optim.state_dict(),
+        "scheduler_state": scheduler.state_dict(),
+        "epoch": 0,
+        "loss": torch.inf,
+    }
+    torch.save(checkpoint, checkpoint_path)
 # %%

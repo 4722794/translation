@@ -1,12 +1,12 @@
 num_epochs: 20
 vocab_source: 5001
 vocab_target: 5001
-optimizer: adamw
-scheduler: cosine
-dropout: 0.4
-hidden_size: 512 
-embedding_size: 128
-learning_rate: 0.001
-batch_size: 512
-num_layers: 1
-dot_product: false
+optimizer: adamw # heuristic choice
+scheduler: cosine # heuristic choice
+dropout: 0.4 # heuristic choice
+hidden_size: 512 # heuristic choice
+embedding_size: 128 # heuristic choice
+learning_rate: 0.001 # personal choice
+batch_size: 64 # personal choice
+num_layers: 4 # personal choice
+dot_product: false # heuristic choice

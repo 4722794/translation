@@ -17,7 +17,7 @@ import wandb
 from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
-from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu
+from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu,init_checkpoint
 import yaml
 from dataclasses import make_dataclass
 from tqdm.auto import tqdm
@@ -28,8 +28,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
+model_path = root_path / "saved_models"
+checkpoint_path = Path(f"{model_path}/checkpoint.tar")
 train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
+
+# optional, if you want to remove existing checkpoint
+# if checkpoint_path.exists():
+#     checkpoint_path.unlink()
+
+#%% init tokenizer, checkpoint
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
 
 with open('config/config.yaml') as f:
@@ -39,12 +47,17 @@ fields = [(k,type(v)) for k,v in config.items()]
 DotDict = make_dataclass('DotDict',fields)
 conf = DotDict(**config)
 
+checkpoint = init_checkpoint(conf,checkpoint_path,device)
+# check if checkpoint exists
+if not checkpoint_path.exists():
+    raise Exception("No checkpoint found.")
+
 #%%
-def main(config=None):
+def main(config=None,project=None,name=None):
     
     # keep the entire code within the wandb context manager
 
-    with wandb.init(config=config):
+    with wandb.init(config=config,project=project,name=name):
         # all the code goes here
         c = wandb.config
         # get dataset
@@ -56,10 +69,7 @@ def main(config=None):
         # get optimizer
         optim = get_optimizer(model, c.optimizer, c.learning_rate)
         # OPTIONAL: get_scheduler
-        if c.scheduler is not None:
-            scheduler = get_scheduler(optim, c.scheduler)
-        else:
-            scheduler = None
+        scheduler = get_scheduler(optim, c.scheduler)
         # loss fn
         loss_fn = nn.CrossEntropyLoss(reduction="none")
         # training loop
@@ -70,6 +80,9 @@ def main(config=None):
             print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
             val_loss = valid_loop(model, val_loader, loss_fn, device)
             print(f"Validation Loss for Epoch {epoch+1} is {val_loss:.4f}")
+            # if validation loss lower than checkpoint, save new weights
+            if val_loss < checkpoint["loss"]:
+                checkpoint = save_checkpoint(checkpoint_path, model, epoch,val_loss,optim,scheduler)
             bleu_score_test = get_bleu(model, test_loader, device)
             bleu_score_val = get_bleu(model,val_loader,device)
             print(f"Mean BLEU score is {bleu_score_val:.4f}")
@@ -83,4 +96,8 @@ def main(config=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score_test})
 
-wandb.agent("ng27dyv9",main,count=20,project="sweepstakes")
+# run the experiment
+name = "GRU-6"
+project_name="french"
+
+main(config=config,project=project_name,name=name)
