@@ -6,7 +6,8 @@ scheduler: cosine # heuristic choice
 dropout: 0.4 # heuristic choice
 hidden_size: 512 # heuristic choice
 embedding_size: 128 # heuristic choice
-learning_rate: 0.001 # personal choice
-batch_size: 64 # personal choice
-num_layers: 4 # personal choice
+learning_rate: 0.0007 # personal choice
+batch_size: 128 # personal choice
+num_layers: 3 # personal choice
 dot_product: false # heuristic choice
+max_time: 60 # to be changed after
