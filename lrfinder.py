@@ -2,13 +2,22 @@
 # %%
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader, random_split, SubsetRandomSampler, BatchSampler
+from torch.optim import Adam, AdamW
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+import pandas as pd
 from pathlib import Path
-from scripts.utils import train_loop, valid_loop, save_checkpoint
+from scripts.dataset import (
+    TranslationDataset,
+)  # The logic of TranslationDataset is defined in the file dataset.py
+from scripts.model import TranslationNN
+from scripts.utils import token_to_sentence, train_loop, valid_loop,forward_pass,CustomAdam,save_checkpoint
 import wandb
 from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
-from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu,init_checkpoint, find_lr, get_min_lr
+from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu,init_checkpoint
 import yaml
 from dataclasses import make_dataclass
 from tqdm.auto import tqdm
@@ -43,19 +52,12 @@ checkpoint = init_checkpoint(conf,checkpoint_path,device)
 if not checkpoint_path.exists():
     raise Exception("No checkpoint found.")
 
-# lr finder 
-
-min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, conf.batch_size, conf.vocab_source, conf.vocab_target, conf.embedding_size, conf.hidden_size, conf.dropout, conf.num_layers, conf.dot_product, conf.optimizer, conf.learning_rate, device)
-
-# 
-
 #%%
 def main(config=None,project=None,name=None,checkpoint=None):
     
     # keep the entire code within the wandb context manager
 
     with wandb.init(config=config,project=project,name=name):
-        start_time = time.time()
         # all the code goes here
         c = wandb.config
         # get dataset
@@ -66,37 +68,37 @@ def main(config=None,project=None,name=None,checkpoint=None):
         model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout,c.num_layers,c.dot_product)
         # get optimizer
         optim = get_optimizer(model, c.optimizer, c.learning_rate)
-        # loss fn
-        loss_fn = nn.CrossEntropyLoss(reduction="none")
-        # get the learning rate
-        min_lr,_,_ = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=0.1,device=device)
         # OPTIONAL: get_scheduler
         scheduler = get_scheduler(optim, c.scheduler)
+        # loss fn
+        loss_fn = nn.CrossEntropyLoss(reduction="none")
 
         # training loop
         num_epochs = c.num_epochs # hard coding this value for now until further discussion
         for epoch in tqdm(range(num_epochs)):
             print(f"Epoch {epoch+1}")
-            train_loss = train_loop(model, train_loader, loss_fn, optim,scheduler,epoch, device,log=False)
+            train_loss = train_loop(model, train_loader, loss_fn, optim,scheduler,epoch, device)
             print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
             val_loss = valid_loop(model, val_loader, loss_fn, device)
             print(f"Validation Loss for Epoch {epoch+1} is {val_loss:.4f}")
             # if validation loss lower than checkpoint, save new weights
             if val_loss < checkpoint["loss"]:
                 checkpoint = save_checkpoint(checkpoint_path, model, epoch,val_loss,optim,scheduler)
+            bleu_score_test = get_bleu(model, test_loader, device)
+            bleu_score_val = get_bleu(model,val_loader,device)
+            print(f"Mean BLEU score is {bleu_score_val:.4f}")
             metrics = {
                 "baseplots/epoch": epoch,
                 "baseplots/train_loss": train_loss,
                 "baseplots/val_loss": val_loss,
+                "baseplots/bleu_score_val": bleu_score_val,
+                "baseplots/bleu_score": bleu_score_test
             }
-            elapsed_time = time.time() - start_time
             wandb.log(metrics)
-            if elapsed_time > c.max_time:
-                break
-            
+        wandb.log({"bleu":bleu_score_test})
 
 # run the experiment
-name = "PSGRU-Paris testrun 2"
-project_name="ucl"
+name = "GRU-6-64"
+project_name="french"
 
 main(config=config,project=project_name,name=name,checkpoint=checkpoint)

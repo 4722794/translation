@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
 import sentencepiece as spm
+from torch_lr_finder import LRFinder
 """
 config list
 - Vs,Vt,E,H,
@@ -118,3 +119,64 @@ def init_checkpoint(config,checkpoint_path,device):
     torch.save(checkpoint, checkpoint_path)
 
     return checkpoint
+
+import math
+import math
+
+def find_lr(model, optimizer,loss_fn,loader, init_value=1e-8, final_value=1., beta=0.98, device='cuda'):
+    num = len(loader) - 1
+    mult = (final_value / init_value) ** (1/num)
+    lr = init_value
+    optimizer.param_groups[0]['lr'] = lr
+    avg_loss = 0.
+    best_loss = float('inf')
+    batch_num = 0
+    losses = []
+    log_lrs = []
+
+    for batch in loader:
+        batch_num += 1
+        model.to(device)
+        loss = forward_pass(batch, model, loss_fn, device)
+        avg_loss = beta * avg_loss + (1 - beta) * loss.item()
+        smoothed_loss = avg_loss / (1 - beta ** batch_num)
+
+        if batch_num > 1 and smoothed_loss > 4 * best_loss:
+            return log_lrs, losses
+
+        if smoothed_loss < best_loss or batch_num == 1:
+            best_loss = smoothed_loss
+
+        losses.append(smoothed_loss)
+        log_lrs.append(math.log10(lr))
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        lr *= mult
+        optimizer.param_groups[0]['lr'] = lr
+
+        # get the minimum log_lrs
+        min_log_lr = min(log_lrs)
+        # convert to normal scale
+        min_lr = 10**min_log_lr / 10
+        
+
+    return min_lr, log_lrs, losses
+
+
+def get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, batch_size, vocab_source, vocab_target, embedding_size, hidden_size, dropout, num_layers, dot_product, optimizer, learning_rate, device):
+    # get dataset
+    train_set,val_set,test_set = get_dataset(train_path,source_tokenizer,target_tokenizer), get_dataset(val_path,source_tokenizer,target_tokenizer), get_dataset(test_path,source_tokenizer,target_tokenizer)
+    # get loaders
+    train_loader,val_loader,test_loader = get_dataloader(train_set,batch_size), get_dataloader(val_set,batch_size), get_dataloader(test_set,batch_size)
+    # get model
+    model = get_model(vocab_source,vocab_target,embedding_size,hidden_size,dropout,dropout,num_layers,dot_product)
+    # get optimizer
+    optim = get_optimizer(model, optimizer, learning_rate)
+    # loss fn
+    loss_fn = nn.CrossEntropyLoss(reduction="none")
+    # get the learning rate
+    min_lr,_,_ = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=10,device=device)
+    return min_lr
