@@ -18,7 +18,6 @@ from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
 import sentencepiece as spm
-from torch_lr_finder import LRFinder
 """
 config list
 - Vs,Vt,E,H,
@@ -142,7 +141,7 @@ def find_lr(model, optimizer,loss_fn,loader, init_value=1e-8, final_value=1., be
         smoothed_loss = avg_loss / (1 - beta ** batch_num)
 
         if batch_num > 1 and smoothed_loss > 4 * best_loss:
-            return log_lrs, losses
+            break
 
         if smoothed_loss < best_loss or batch_num == 1:
             best_loss = smoothed_loss
@@ -157,12 +156,10 @@ def find_lr(model, optimizer,loss_fn,loader, init_value=1e-8, final_value=1., be
         lr *= mult
         optimizer.param_groups[0]['lr'] = lr
 
-        # get the minimum log_lrs
-        min_log_lr = min(log_lrs)
-        # convert to normal scale
-        min_lr = 10**min_log_lr / 10
-        
-
+    # get the min log lr
+    min_log_lr = log_lrs[losses.index(min(losses))]
+    # convert to normal scale
+    min_lr = 10**min_log_lr / 10
     return min_lr, log_lrs, losses
 
 
@@ -178,5 +175,5 @@ def get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokeniz
     # loss fn
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     # get the learning rate
-    min_lr,_,_ = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=10,device=device)
+    min_lr, log_lrs, losses = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=10,device=device)
     return min_lr

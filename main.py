@@ -28,7 +28,7 @@ source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model",
 if checkpoint_path.exists():
     checkpoint_path.unlink()
 
-#%% init tokenizer, checkpoint
+#%%
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
 
 with open('config/config.yaml') as f:
@@ -43,12 +43,12 @@ checkpoint = init_checkpoint(conf,checkpoint_path,device)
 if not checkpoint_path.exists():
     raise Exception("No checkpoint found.")
 
-# lr finder 
-
+# lr finder
 min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, conf.batch_size, conf.vocab_source, conf.vocab_target, conf.embedding_size, conf.hidden_size, conf.dropout, conf.num_layers, conf.dot_product, conf.optimizer, conf.learning_rate, device)
 
-# 
+print(f"New learning rate is {min_lr}")
 
+config["learning_rate"] = min_lr
 #%%
 def main(config=None,project=None,name=None,checkpoint=None):
     
@@ -69,7 +69,9 @@ def main(config=None,project=None,name=None,checkpoint=None):
         # loss fn
         loss_fn = nn.CrossEntropyLoss(reduction="none")
         # get the learning rate
-        min_lr,_,_ = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=0.1,device=device)
+        # set new learning rate
+        c.learning_rate = min_lr
+
         # OPTIONAL: get_scheduler
         scheduler = get_scheduler(optim, c.scheduler)
 

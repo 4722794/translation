@@ -8,14 +8,8 @@ dropout: 0.4 # heuristic choice
 # nothing above should change
 hidden_size: 512 # heuristic choice
 embedding_size: 128 # heuristic choice
-<<<<<<< HEAD
 learning_rate: 0.0007 # personal choice
 batch_size: 128 # personal choice
 num_layers: 3 # personal choice
 dot_product: false # heuristic choice
-max_time: 60 # to be changed after
-=======
-learning_rate: 0.00003 # personal choice
-batch_size: 64 # personal choice
-num_layers: 4 # personal choice
->>>>>>> 84cd301b48499fb1f7003976ff9a4b3db1bd2afd
+
