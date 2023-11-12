@@ -6,7 +6,6 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.init as init
 from torch.utils.data import DataLoader, random_split, SubsetRandomSampler, BatchSampler
 
-from torch.optim import Adam, AdamW
 from torch.nn.utils import clip_grad_norm_
 import pandas as pd
 from pathlib import Path
@@ -15,11 +14,10 @@ from scripts.dataset import (
 )  # The logic of TranslationDataset is defined in the file dataset.py
 from scripts.model import TranslationNN
 from scripts.utils import calculate_bleu_score, valid_loop, evaluate_show_attention,token_to_sentence
-import wandb
-from dotenv import load_dotenv
-import os
+from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,init_checkpoint,get_bleu
+import yaml
+from dataclasses import make_dataclass
 import evaluate
-
 
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -27,40 +25,31 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
-checkpoint_path = Path(f"{model_path}/dropouts_checkpoint.tar")
+checkpoint_path = Path(f"{model_path}/best_run.tar")
+train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
+source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
 
-df = pd.read_csv(f"{data_path}/fra-eng.csv")
-dataset = TranslationDataset(df, from_file=True)
 
-config = dict(
-    epochs=100,
-    batch_size=512,
-    vocab_source=5001,
-    vocab_target=5001,
-    embedding_size=256,
-    hidden_size=256,
-    device=device,
-    lr=1e-3,
-)
+#%% init tokenizer, checkpoint
+source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
 
-model = TranslationNN(
-    config["vocab_source"],
-    config["vocab_target"],
-    config["embedding_size"],
-    config["hidden_size"],
-)
-model.to(device)
+with open('config/config.yaml') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
 
+fields = [(k,type(v)) for k,v in config.items()]
+DotDict = make_dataclass('DotDict',fields)
+c = DotDict(**config)
+
+# check if checkpoint exists
+if not checkpoint_path.exists():
+    raise Exception("No checkpoint found.")
 
 # %%
-# instantiate params
-model = TranslationNN(
-    config["vocab_source"],
-    config["vocab_target"],
-    config["embedding_size"],
-    config["hidden_size"],
-)
-model.to(device)
+train_set,val_set,test_set = get_dataset(train_path,source_tokenizer,target_tokenizer), get_dataset(val_path,source_tokenizer,target_tokenizer), get_dataset(test_path,source_tokenizer,target_tokenizer)
+# get loaders
+train_loader,val_loader,test_loader = get_dataloader(train_set,c.batch_size), get_dataloader(val_set,c.batch_size), get_dataloader(test_set,c.batch_size)
+# get model
+model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout,c.num_layers,c.dot_product)
 
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 
@@ -69,63 +58,19 @@ checkpoint = torch.load(checkpoint_path, map_location=device)
 model.load_state_dict(checkpoint["nn_state"])
 epoch = checkpoint["epoch"]
 loss = checkpoint["loss"]
-# %%
-# make dataloaders
-collate_fn = lambda x: (pad_sequence(i, batch_first=True) for i in x)
-train_set, valid_set, test_set = random_split(
-    dataset, [0.9, 0.05, 0.05], generator=torch.Generator().manual_seed(4722794)
-)
-train_sampler, val_sampler = BatchSampler(
-    SubsetRandomSampler(train_set.indices),
-    batch_size=config["batch_size"],
-    drop_last=True,
-), BatchSampler(
-    SubsetRandomSampler(valid_set.indices),
-    batch_size=config["batch_size"],
-    drop_last=True,
-)
-test_sampler = BatchSampler(
-    SubsetRandomSampler(test_set.indices),
-    batch_size=config["batch_size"],
-    drop_last=True,
-)
-
-train_loader = DataLoader(
-    dataset,
-    batch_sampler=train_sampler,
-    collate_fn=collate_fn,
-)
-val_loader = DataLoader(
-    dataset,
-    batch_sampler=val_sampler,
-    collate_fn=collate_fn,
-)
-test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate_fn)
-
+print(f"Loss after {epoch+1} epochs is {loss:.4f}")
 
 # %%
 # check the loss ball park
-eval_loss =  torch.zeros(len(val_loader))
-eval_loss = valid_loop(val_loader, model, loss_fn, eval_loss, device)
+eval_loss = val_loss = valid_loop(model, val_loader, loss_fn, device)
 # get the averaged validation loss
 eval_loss = eval_loss.mean()
 print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f} \n stored value is {loss:.4f}")
 
-
+#%%
 # %%
-EOS_token =2
-scores = []
-for x_s, x_t, y in test_loader:
-    with torch.no_grad():
-        model.to(device)
-        x_s, x_t = x_s.to(device), x_t.to(device)
-        outs, _ = model.evaluate(x_s)
-    score = calculate_bleu_score(
-        outs, x_t, dataset, EOS_token, device=device
-    )
-    scores.append(score)
-mean_score = torch.tensor(scores).mean()
-print(f'BLEU score is {100*mean_score:.4f}')
+bleu_score_test = get_bleu(model, test_loader, device)
+print(f'BLEU score is {100*bleu_score_test:.4f}')
 # %%
 # sample inference
 
@@ -145,24 +90,24 @@ source_sentences = [
     "The English language is undoubtedly the easiest and at the same time the most efficient means of international communication.",
     "I only eat the vegetables that I grow myself.",
 ]
+#%%
+# x_test = train_set.from_sentence_list('source',source_sentences)
 
-x_test = dataset.from_sentence_list('source',source_sentences)
-
-outs,weights = model.evaluate(x_test)
-
-
-preds = token_to_sentence(outs,dataset,EOS_token) 
-
-# %%
-eg_sent = source_sentences[-1]
+# outs,weights = model.evaluate(x_test)
 
 
-evaluate_show_attention(model,eg_sent,dataset,EOS_token)
+# preds = token_to_sentence(outs,train_set) 
+
+# # %%
+# eg_sent = source_sentences[-1]
+
+
+# evaluate_show_attention(model,eg_sent,dataset,EOS_token)
 #%%
 
 # save files for measure
 bleu = evaluate.load("bleu") 
-pred_path = root_path/'mt.txt'
+pred_path = root_path/'machinetranslated.txt'
 groundtruth = root_path/'groundtruth.txt'
 preds_list = []
 actuals_list = []
@@ -172,16 +117,16 @@ for xs,xt,_ in test_loader:
         model.to(device)
         xt,xs = xt.to(device),xs.to(device)
         outs, _ = model.evaluate(xs)
-    preds = token_to_sentence(outs,dataset,EOS_token)
+    preds = token_to_sentence(outs,target_tokenizer)
     preds_list.extend(preds)
-    actuals = token_to_sentence(xt,dataset,EOS_token)
+    actuals = token_to_sentence(xt,target_tokenizer)
     actuals_list.extend(actuals)
 
-# with open(pred_path,'w') as f:
-#     f.writelines('\n'.join(preds_list))
+with open(pred_path,'w') as f:
+    f.writelines('\n'.join(preds_list))
 
-# with open(groundtruth,'w') as f:
-#     f.writelines('\n'.join(actuals_list))
+with open(groundtruth,'w') as f:
+    f.writelines('\n'.join(actuals_list))
 
 # %%
 predictions = preds_list

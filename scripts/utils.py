@@ -14,6 +14,7 @@ import matplotlib.ticker as ticker
 from torch.optim.lr_scheduler import _LRScheduler
 import numpy as np
 import wandb
+from tqdm.auto import tqdm
 # need attention maps
 
 # attention stuff
@@ -104,11 +105,11 @@ def log_loss(loss,iteration,epoch,train=True):
         print(f'Loss after {iteration} iterations is {loss.item():.4f}')
 
 
-def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device):
+def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device,log=True):
     model.to(device)
     model.train()
     loss_tensor = torch.zeros(len(loader))
-    for c, batch in enumerate(loader):
+    for c, batch in tqdm(enumerate(loader)):
         loss = forward_pass(batch, model, loss_fn, device)
         # backprop step
         optim.zero_grad()
@@ -119,7 +120,8 @@ def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device):
         if scheduler is not None:
             scheduler.step(epoch + c / len(loader))
         iteration = len(loader)*epoch + c
-        log_loss(loss,iteration,epoch)
+        if log:
+            log_loss(loss,iteration,epoch)
         loss_tensor[c] = loss.item()
     return loss_tensor.mean()
 

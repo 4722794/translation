@@ -10,7 +10,7 @@ parameters:
     vocab_target:
         value: 5001
     optimizer:
-        values: 'adamw'
+        value: 'adamw'
     scheduler:
         value: 'cosine'
     dropout:
