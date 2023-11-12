@@ -178,5 +178,5 @@ def get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokeniz
     # loss fn
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     # get the learning rate
-    min_lr,_,_ = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=0.1,device=device)
+    min_lr,_,_ = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=10,device=device)
     return min_lr
