@@ -20,13 +20,11 @@ parameters:
     hidden_size:
         value: 512
     learning_rate:
-        distribution: log_uniform_values
-        min: 0.0001
-        max: 0.002
+        value: 0.001
     batch_size:
-        values: [64,128]
+        value: 32
     num_layers:
-        values: [1,2,3,4]
+        values: [1,2,3,4,5,6]
     dot_product:
-        values: [true,false]
+        value: false
     
