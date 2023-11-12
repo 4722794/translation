@@ -1,12 +1,13 @@
-num_epochs: 50
+num_epochs: 1
 vocab_source: 5001
 vocab_target: 5001
+dot_product: false # heuristic choice
 optimizer: adamw # heuristic choice
 scheduler: cosine # heuristic choice
 dropout: 0.4 # heuristic choice
+# nothing above should change
 hidden_size: 512 # heuristic choice
 embedding_size: 128 # heuristic choice
-learning_rate: 0.001 # personal choice
+learning_rate: 0.00003 # personal choice
 batch_size: 64 # personal choice
 num_layers: 4 # personal choice
-dot_product: false # heuristic choice
