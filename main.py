@@ -31,29 +31,17 @@ if checkpoint_path.exists():
 #%%
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
 
-with open('config/config.yaml') as f:
-    config = yaml.load(f, Loader=yaml.FullLoader)
-
-fields = [(k,type(v)) for k,v in config.items()]
-DotDict = make_dataclass('DotDict',fields)
-conf = DotDict(**config)
-
-checkpoint = init_checkpoint(conf,checkpoint_path,device)
-# check if checkpoint exists
-if not checkpoint_path.exists():
-    raise Exception("No checkpoint found.")
-
-
 #%%
 def main(config=None,project=None,name=None,checkpoint=None):
     
     # keep the entire code within the wandb context manager
 
     with wandb.init(config=config,project=project,name=name):
+        c = wandb.config
         # find learning rate
         # lr finder
-        min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, conf.batch_size, conf.vocab_source, conf.vocab_target, conf.embedding_size, conf.hidden_size, conf.dropout, conf.num_layers, conf.dot_product, conf.optimizer, conf.learning_rate, device)
-        c = wandb.config
+        min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, c.batch_size, c.vocab_source, c.vocab_target, c.embedding_size, c.hidden_size, c.dropout, c.num_layers, c.dot_product, c.optimizer, c.learning_rate, device)
+        print(f"Minimum learning rate is {min_lr}")
         c.learning_rate = min_lr
         # all the code goes here
         # get dataset
@@ -88,5 +76,4 @@ def main(config=None,project=None,name=None,checkpoint=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score})
 
-            
-wandb.agent("1c581x2f",main,count=20,project="sweepstakes")
+wandb.agent("e92af3e5",main,count=20,project="sweepstakes")
