@@ -81,5 +81,6 @@ def main(config=None,project=None,name=None,checkpoint=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score})
 
-wandb.agent("y7ahqzp6",main,count=20,project="sweepstakes")
+# wandb.agent("y7ahqzp6",main,count=20,project="sweepstakes")
+wandb.agent("4z6jbsum",main,count=20,project="sweepstakes")
 # main(config=conf,project="sweepstakes",name="sweetrun",checkpoint=checkpoint_path)

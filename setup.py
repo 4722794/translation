@@ -63,6 +63,10 @@ def get_optimizer(model, optim_name, learning_rate):
     elif optim_name == 'adamw':
         optimizer = optim.AdamW(model.parameters(),
                                lr=learning_rate)
+    # use rmsprop
+    elif optim_name == 'rmsprop':
+        optimizer = optim.RMSprop(model.parameters(),
+                               lr=learning_rate)
     else:
         raise ValueError("Optimizer not recognized")
     return optimizer
