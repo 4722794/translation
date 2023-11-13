@@ -46,6 +46,8 @@ def main(config=None,project=None,name=None,checkpoint=None):
         sample_lr = 0.001 # this doesn't even get used
         min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, c.batch_size, c.vocab_source, c.vocab_target, c.embedding_size, c.hidden_size, c.dropout, c.num_layers, c.dot_product, c.optimizer, sample_lr, device)
         print(f"Minimum learning rate is {min_lr}")
+        if min_lr < 1e-4:
+            min_lr = 1e-4
         # get dataset
         train_set,val_set,test_set = get_dataset(train_path,source_tokenizer,target_tokenizer), get_dataset(val_path,source_tokenizer,target_tokenizer), get_dataset(test_path,source_tokenizer,target_tokenizer)
         # get loaders

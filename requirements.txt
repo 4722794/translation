@@ -118,8 +118,7 @@ stack-data
 sympy==1.12
 tensorboard==2.14.0
 tensorboard-data-server==0.7.1
-torch==2.1.0
-torchdata==0.6.1
+torch
 torchinfo==1.8.0
 torchtext==0.15.2
 torchvision==0.16.0
