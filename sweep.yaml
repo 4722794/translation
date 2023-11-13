@@ -4,7 +4,7 @@ metric:
   goal: maximize
 parameters:
   num_epochs:
-    value: 20
+    value: 5
   vocab_source:
     value: 5001
   vocab_target:
@@ -12,7 +12,7 @@ parameters:
   optimizer:
     values: ["adamw", "rmsprop"]
   scheduler:
-    values: ["none", "cosine"]
+    value: "cosine"
   dropout:
     values: [0.1, 0.2, 0.3, 0.4]
   embedding_size:
