@@ -4,7 +4,7 @@ metric:
     goal: maximize
 parameters:
     num_epochs:
-        value: 20
+        value: 5
     vocab_source:
         value: 5001
     vocab_target:
@@ -19,12 +19,10 @@ parameters:
         value: 128
     hidden_size:
         value: 512
-    learning_rate:
-        value: 0.001
     batch_size:
-        value: 32
+        value: 128
     num_layers:
-        values: [1,2,3,4,5,6]
+        values: [1,2,3,4,5,6,7,8,9]
     dot_product:
         value: false
     

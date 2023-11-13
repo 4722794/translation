@@ -21,12 +21,15 @@ root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
 checkpoint_path = Path(f"{model_path}/checkpoint.tar")
-train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
+train_path, val_path,test_path = data_path / "train/translation.csv", data_path / "val/translation.csv", data_path / "test/translation.csv"
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
 
-# optional, if you want to remove existing checkpoint
-if checkpoint_path.exists():
-    checkpoint_path.unlink()
+with open('config/config.yaml') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+
+fields = [(k,type(v)) for k,v in config.items()]
+DotDict = make_dataclass('DotDict',fields)
+conf = DotDict(**config)
 
 #%%
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
@@ -40,10 +43,9 @@ def main(config=None,project=None,name=None,checkpoint=None):
         c = wandb.config
         # find learning rate
         # lr finder
-        min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, c.batch_size, c.vocab_source, c.vocab_target, c.embedding_size, c.hidden_size, c.dropout, c.num_layers, c.dot_product, c.optimizer, c.learning_rate, device)
+        sample_lr = 0.001 # this doesn't even get used
+        min_lr = get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokenizer, c.batch_size, c.vocab_source, c.vocab_target, c.embedding_size, c.hidden_size, c.dropout, c.num_layers, c.dot_product, c.optimizer, sample_lr, device)
         print(f"Minimum learning rate is {min_lr}")
-        c.learning_rate = min_lr
-        # all the code goes here
         # get dataset
         train_set,val_set,test_set = get_dataset(train_path,source_tokenizer,target_tokenizer), get_dataset(val_path,source_tokenizer,target_tokenizer), get_dataset(test_path,source_tokenizer,target_tokenizer)
         # get loaders
@@ -51,7 +53,7 @@ def main(config=None,project=None,name=None,checkpoint=None):
         # get model
         model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout,c.num_layers,c.dot_product)
         # get optimizer
-        optim = get_optimizer(model, c.optimizer, c.learning_rate)
+        optim = get_optimizer(model, c.optimizer, min_lr)
         # loss fn
         loss_fn = nn.CrossEntropyLoss(reduction="none")
         # OPTIONAL: get_scheduler
@@ -76,4 +78,5 @@ def main(config=None,project=None,name=None,checkpoint=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score})
 
-wandb.agent("e92af3e5",main,count=20,project="sweepstakes")
+wandb.agent("b8f2zar2",main,count=20,project="sweepstakes")
+# main(config=conf,project="sweepstakes",name="sweetrun",checkpoint=checkpoint_path)
