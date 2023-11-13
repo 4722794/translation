@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
 import sentencepiece as spm
+import gc
 """
 config list
 - Vs,Vt,E,H,
@@ -176,4 +177,8 @@ def get_min_lr(train_path, val_path, test_path, source_tokenizer, target_tokeniz
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     # get the learning rate
     min_lr, log_lrs, losses = find_lr(model,optim,loss_fn,train_loader,init_value = 1e-8, final_value=10,device=device)
+    del model,optim
+    gc.collect()
+    if device == 'cuda':
+        torch.cuda.empty_cache()
     return min_lr
