@@ -120,12 +120,11 @@ tensorboard==2.14.0
 tensorboard-data-server==0.7.1
 torch
 torchinfo==1.8.0
-torchtext==0.15.2
 torchvision==0.16.0
 tornado 
 tqdm==4.66.1
 traitlets 
-triton==2.1.0
+triton
 typing_extensions 
 tzdata==2023.3
 urllib3==2.0.5
