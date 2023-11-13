@@ -119,8 +119,8 @@ sympy==1.12
 tensorboard==2.14.0
 tensorboard-data-server==0.7.1
 torch
-torchinfo==1.8.0
-torchvision==0.16.0
+torchinfo
+torchvision
 tornado 
 tqdm==4.66.1
 traitlets 
