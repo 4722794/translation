@@ -1,28 +1,27 @@
 method: random
 metric:
-    name: bleu
-    goal: maximize
+  name: bleu
+  goal: maximize
 parameters:
-    num_epochs:
-        value: 5
-    vocab_source:
-        value: 5001
-    vocab_target:
-        value: 5001
-    optimizer:
-        value: 'adamw'
-    scheduler:
-        value: 'cosine'
-    dropout:
-        value: 0.4
-    embedding_size:
-        value: 128
-    hidden_size:
-        value: 512
-    batch_size:
-        value: 128
-    num_layers:
-        values: [1,2,3,4,5,6,7,8,9]
-    dot_product:
-        value: false
-    
+  num_epochs:
+    value: 5
+  vocab_source:
+    value: 5001
+  vocab_target:
+    value: 5001
+  optimizer:
+    value: "adamw"
+  scheduler:
+    value: "cosine"
+  dropout:
+    value: [0.4, 0.5, 0.6]
+  embedding_size:
+    value: 128
+  hidden_size:
+    value: 512
+  batch_size:
+    value: 64
+  num_layers:
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  dot_product:
+    value: false
