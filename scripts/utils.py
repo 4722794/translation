@@ -181,7 +181,7 @@ class CustomScheduler(_LRScheduler):
 
 
 
-def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler,bleu_score):
+def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler,bleu_score,run):
     checkpoint = {
         "epoch": epoch,
         "loss": loss,
@@ -191,7 +191,13 @@ def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler,ble
         "scheduler_state": scheduler.state_dict(),
     }
     torch.save(checkpoint, checkpoint_path)
+    # log checkpoint as an artifact
+    run_id = run.id
+    artifact = wandb.Artifact(f"model-checkpoints-{run_id}", type="model")
+    artifact.add_file(checkpoint_path)
+    run.log_artifact(artifact)
     return checkpoint
+
 
 
 #%%

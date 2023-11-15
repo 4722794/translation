@@ -2,25 +2,22 @@
 # %%
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-import torch.nn.init as init
-from torch.utils.data import DataLoader, random_split, SubsetRandomSampler, BatchSampler
-
-from torch.nn.utils import clip_grad_norm_
 import pandas as pd
 from pathlib import Path
-from scripts.dataset import (
-    TranslationDataset,
-)  # The logic of TranslationDataset is defined in the file dataset.py
-from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, valid_loop, evaluate_show_attention,token_to_sentence
-from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,init_checkpoint,get_bleu
+from scripts.utils import valid_loop,token_to_sentence
+from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_bleu
 import yaml
 from dataclasses import make_dataclass
 import evaluate
+import wandb
 
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# wandb stuff
+project_name = "sweepstakes"
+run_id = ""
+checkpoint_name = f"model-checkpoints-{run_id}:latest"
 
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
@@ -50,10 +47,17 @@ train_set,val_set,test_set = get_dataset(train_path,source_tokenizer,target_toke
 train_loader,val_loader,test_loader = get_dataloader(train_set,c.batch_size), get_dataloader(val_set,c.batch_size), get_dataloader(test_set,c.batch_size)
 # get model
 model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout,c.num_layers,c.dot_product)
-
 loss_fn = nn.CrossEntropyLoss(reduction="none")
 
-checkpoint = torch.load(checkpoint_path, map_location=device)
+# get the correct model weights
+with wandb.init() as run:
+    artifact = run.use_artifact(f'{project_name}/{checkpoint_name}',type='model')
+    artifact_dir = artifact.download()
+    checkpoint_path = Path(artifact_dir) / "checkpoint.tar"
+    checkpoint = torch.load(checkpoint_path,map_location=device)
+
+
+# checkpoint = torch.load(checkpoint_path, map_location=device)
 # load checkpoint details
 model.load_state_dict(checkpoint["nn_state"])
 epoch = checkpoint["epoch"]
@@ -90,19 +94,6 @@ source_sentences = [
     "The English language is undoubtedly the easiest and at the same time the most efficient means of international communication.",
     "I only eat the vegetables that I grow myself.",
 ]
-#%%
-# x_test = train_set.from_sentence_list('source',source_sentences)
-
-# outs,weights = model.evaluate(x_test)
-
-
-# preds = token_to_sentence(outs,train_set) 
-
-# # %%
-# eg_sent = source_sentences[-1]
-
-
-# evaluate_show_attention(model,eg_sent,dataset,EOS_token)
 #%%
 
 # save files for measure

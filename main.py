@@ -51,7 +51,7 @@ def main(config=None,project=None,name=None,checkpoint=None):
     
     # keep the entire code within the wandb context manager
 
-    with wandb.init(config=config,project=project,name=name):
+    with wandb.init(config=config,project=project,name=name) as run:
         c = wandb.config
         # find learning rate
         # lr finder
@@ -87,7 +87,7 @@ def main(config=None,project=None,name=None,checkpoint=None):
             print(f"Mean BLEU score is {bleu_score_val:.4f}")
             # if BLEU score improves, only then save model
             if bleu_score_val > checkpoint["bleu"]:
-                checkpoint = save_checkpoint(checkpoint_path, model, epoch,val_loss,optim,scheduler,bleu_score_val)
+                checkpoint = save_checkpoint(checkpoint_path, model, epoch,val_loss,optim,scheduler,bleu_score_val,run)
             bleu_score_test = get_bleu(model, test_loader, device)
             metrics = {
                 "baseplots/epoch": epoch,
