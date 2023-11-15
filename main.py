@@ -6,8 +6,6 @@ from pathlib import Path
 from scripts.utils import train_loop, valid_loop, save_checkpoint
 import wandb
 from dotenv import load_dotenv
-import os
-import evaluate # this is a hugging face library
 from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu,init_checkpoint, get_min_lr
 import yaml
 from dataclasses import make_dataclass
