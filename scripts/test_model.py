@@ -198,3 +198,32 @@ def test_encoder_x():
 
 test_encoder_x()
 # %%
+import torch
+from model import TranslationDX
+
+def test_translation_dx():
+    vocab_size_s = 100
+    vocab_size_t = 200
+    embedding_size = 32
+    hidden_size = 64
+    dropout_ratio = 0.5
+    num_heads = 8
+    num_layers = 2
+    batch_size = 16
+    seq_len_s = 10
+    seq_len_t = 12
+
+    model = TranslationDX(vocab_size_s, vocab_size_t, embedding_size, hidden_size, num_heads, dropout_ratio, dropout_ratio, num_layers, dot=False)
+
+    # Test the forward method
+    x_s = torch.randint(low=0, high=vocab_size_s, size=(batch_size, seq_len_s))
+    x_t = torch.randint(low=0, high=vocab_size_t, size=(batch_size, seq_len_t))
+    output = model(x_s, x_t)
+    assert output.shape == (batch_size, seq_len_t, vocab_size_t)
+
+    # Test the evaluate method
+    x_s = torch.randint(low=0, high=vocab_size_s, size=(batch_size, seq_len_s))
+    output, weights = model.evaluate(x_s)
+    assert output.shape == (batch_size, 30)
+
+test_translation_dx()
