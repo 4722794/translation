@@ -111,12 +111,13 @@ pred_path = root_path/'machinetranslated.txt'
 groundtruth = root_path/'groundtruth.txt'
 preds_list = []
 actuals_list = []
+EOS_token = test_loader.dataset.eos_id()
 
 for xs,xt,_ in test_loader:
     with torch.no_grad():
         model.to(device)
         xt,xs = xt.to(device),xs.to(device)
-        outs, _ = model.evaluate(xs)
+        outs, _ = model.evaluate(xs,EOS_token=EOS_token)
     preds = token_to_sentence(outs,target_tokenizer)
     preds_list.extend(preds)
     actuals = token_to_sentence(xt,target_tokenizer)

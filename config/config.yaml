@@ -2,11 +2,11 @@ vocab_source: 5001
 vocab_target: 5001
 optimizer: adamw
 scheduler: cosine
-dropout: 0.4
-hidden_size: 512 
+dropout: 0.2
+hidden_size: 512
 embedding_size: 128
-# learning_rate: 1e-3 # now setting it programatically
+learning_rate: 0.001 # now setting it programatically
 batch_size: 128
-num_epochs: 1
+num_epochs: 100
 num_layers: 9
 dot_product: false

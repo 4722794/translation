@@ -15,10 +15,8 @@ from torch.optim.lr_scheduler import _LRScheduler
 import numpy as np
 import wandb
 from tqdm.auto import tqdm
-# need attention maps
 
 # attention stuff
-
 
 def showAttention(input_words, output_words, attentions):
     fig = plt.figure()
@@ -40,12 +38,11 @@ def showAttention(input_words, output_words, attentions):
 
 # bleu score
 
-
-def calculate_bleu_score(outs, x_t, dataset, EOS_token, device):
+def calculate_bleu_score(outs, x_t, dataset, device):
     preds = outs.to(device)
-    mask = preds == EOS_token
+    mask = preds == dataset.sp_t.eos_id()
     correctmask = mask.cumsum(dim=1) != 0
-    preds.masked_fill_(mask, 0)
+    preds.masked_fill_(correctmask, 0)
     out_list = preds.long().tolist()
     preds = [dataset.sp_t.Decode(i).split() for i in out_list]
     targets = [dataset.sp_t.Decode(i) for i in x_t.to("cpu").long().tolist()]
@@ -59,18 +56,18 @@ def calculate_bleu_score(outs, x_t, dataset, EOS_token, device):
 
 def token_to_sentence(outs,tokenizer):
     preds = outs.to("cpu")
-    mask = preds == tokenizer.piece_to_id('</s>') # this should be 2
+    mask = preds == tokenizer.eos_id() # this should be 2
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
     out_list = preds.long().tolist()
     preds = [tokenizer.Decode(i) for i in out_list]
     return preds
 
-def evaluate_show_attention(model, sentence, dataset, EOS_token):
+def evaluate_show_attention(model, sentence, dataset):
     x_test = dataset.from_sentence_list("source", [sentence])
     outs, weights = model.evaluate(x_test)
     preds = outs.to("cpu")
-    mask = preds == EOS_token
+    mask = preds == dataset.sp_t.eos_id()
     correctmask = mask.cumsum(dim=1) != 0
     preds[correctmask] = 0
     out_list = preds.long().tolist()
@@ -99,6 +96,9 @@ def forward_pass(batch, model, loss_fn, device):
 
 
 def log_loss(loss,iteration,epoch,train=True):
+    """
+    log_loss: here log means "logging data" not "natural log"
+    """
     prefix = 'train' if train else 'val'
     wandb.log({f"iterplots/{prefix}loss":loss.item(),"iterplots/iteration":iteration,"iterplots/epoch":epoch})
     if iteration % 100 == 0:
@@ -181,10 +181,11 @@ class CustomScheduler(_LRScheduler):
 
 
 
-def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler):
+def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler,bleu_score):
     checkpoint = {
         "epoch": epoch,
         "loss": loss,
+        "bleu": bleu_score,
         "nn_state": model.state_dict(),
         "opt_state": optimizer.state_dict(),
         "scheduler_state": scheduler.state_dict(),

@@ -6,9 +6,6 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_se
 import torch.optim as optim
 import numpy as np
 
-BOS_token = 1
-EOS_token = 2
-
 # step 2: define encoder
 class EncoderND(nn.Module):
     def __init__(self, V, E, H,dropout_ratio,n):
@@ -309,7 +306,7 @@ class TranslationNN(nn.Module):
         out = self.decoder(x_t, all_h_enc)
         return out
 
-    def evaluate(self, x_s, MAXLEN=30):
+    def evaluate(self, x_s, EOS_token=2,MAXLEN=30):
         with torch.no_grad():
             hidden_encoder = self.encoder.evaluate(x_s)
             B, T, H = hidden_encoder.shape
@@ -358,7 +355,7 @@ class TranslationDNN(nn.Module):
         out = self.decoder(x_t, all_h_enc)
         return out
 
-    def evaluate(self, x_s, MAXLEN=30):
+    def evaluate(self, x_s, EOS_token,MAXLEN=30):
         with torch.no_grad():
             all_hidden_encoder = self.encoder.evaluate(x_s)
             B, _, H = all_hidden_encoder[0].shape

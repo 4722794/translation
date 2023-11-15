@@ -8,7 +8,7 @@ import wandb
 from dotenv import load_dotenv
 import os
 import evaluate # this is a hugging face library
-from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu,init_checkpoint, find_lr, get_min_lr
+from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler,get_bleu,init_checkpoint, get_min_lr
 import yaml
 from dataclasses import make_dataclass
 from tqdm.auto import tqdm
@@ -18,8 +18,9 @@ load_dotenv()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 root_path = Path(__file__).resolve().parents[0]
-data_path = root_path / "data"
 model_path = root_path / "saved_models"
+temp_path = root_path / "temp"
+data_path = temp_path / "data"
 checkpoint_path = Path(f"{model_path}/checkpoint.tar")
 train_path, val_path,test_path = data_path / "train/translation.csv", data_path / "val/translation.csv", data_path / "test/translation.csv"
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
@@ -33,6 +34,17 @@ conf = DotDict(**config)
 
 #%%
 source_tokenizer,target_tokenizer = get_tokenizer(source_tokenizer_path), get_tokenizer(target_tokenizer_path)
+
+# create checkpoint
+
+# optional, if you want to remove existing checkpoint
+if checkpoint_path.exists():
+    checkpoint_path.unlink()
+
+checkpoint = init_checkpoint(conf,checkpoint_path,device)
+# check if checkpoint exists
+if not checkpoint_path.exists():
+    raise Exception("No checkpoint found.")
 
 #%%
 def main(config=None,project=None,name=None,checkpoint=None):
@@ -71,17 +83,20 @@ def main(config=None,project=None,name=None,checkpoint=None):
             print(f"Training Loss for Epoch {epoch+1} is {train_loss:.4f}")
             val_loss = valid_loop(model, val_loader, loss_fn, device)
             print(f"Validation Loss for Epoch {epoch+1} is {val_loss:.4f}")
-            bleu_score = get_bleu(model, test_loader, device)
-            print(f"Mean BLEU score is {bleu_score:.4f}")
+            bleu_score_val = get_bleu(model,val_loader,device)
+            print(f"Mean BLEU score is {bleu_score_val:.4f}")
+            # if BLEU score improves, only then save model
+            if bleu_score_val > checkpoint["bleu"]:
+                checkpoint = save_checkpoint(checkpoint_path, model, epoch,val_loss,optim,scheduler,bleu_score_val)
+            bleu_score_test = get_bleu(model, test_loader, device)
             metrics = {
                 "baseplots/epoch": epoch,
                 "baseplots/train_loss": train_loss,
                 "baseplots/val_loss": val_loss,
-                "baseplots/bleu_score": bleu_score,
+                "baseplots/bleu_score_val": bleu_score_val,
+                "baseplots/bleu_score": bleu_score_test
             }
             wandb.log(metrics)
-        wandb.log({"bleu":bleu_score})
+        wandb.log({"bleu":bleu_score_test})
 
-# wandb.agent("y7ahqzp6",main,count=20,project="sweepstakes")
-wandb.agent("cr9ssc5o",main,count=20,project="sweepstakes")
-# main(config=conf,project="sweepstakes",name="sweetrun",checkpoint=checkpoint_path)
+main(config=conf,project="sweepstakes",name="UCL-return leg",checkpoint=checkpoint)

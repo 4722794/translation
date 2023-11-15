@@ -12,17 +12,6 @@ import numpy as np
 import pickle
 import sentencepiece as spm
 
-root_path = Path(__file__).resolve().parents[1]
-data_path = root_path / 'data'
-s_tokenizer_path = root_path/ 'data' / 'tokenizer_en.model'
-t_tokenizer_path = root_path/ 'data' / 'tokenizer_fr.model'
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-token_s,token_t = spm.SentencePieceProcessor(), spm.SentencePieceProcessor()
-token_s.Load(str(s_tokenizer_path))
-token_t.Load(str(t_tokenizer_path))
-
-
 #%%
 
 class TranslationDataset(Dataset):
@@ -91,8 +80,18 @@ class TranslationDataset(Dataset):
 
 #%%
 if __name__ == '__main__':
+    root_path = Path(__file__).resolve().parents[1]
+    temp_path = root_path / "temp"
+    data_path = temp_path / 'data'
+    s_tokenizer_path = data_path / 'tokenizer_en.model'
+    t_tokenizer_path = data_path / 'tokenizer_fr.model'
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     df = pd.read_csv(f'{data_path}/fra-eng.csv')
-    dataset = TranslationDataset(df)
+    token_s,token_t = spm.SentencePieceProcessor(), spm.SentencePieceProcessor()
+    token_s.Load(str(s_tokenizer_path))
+    token_t.Load(str(t_tokenizer_path))    
+    dataset = TranslationDataset(df,token_s,token_t)
     
 # %%
 

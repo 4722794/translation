@@ -88,6 +88,7 @@ def get_bleu(model, test_loader, device):
     preds_list, actuals_list = list(), list()
     bleu = evaluate.load('bleu')
     token_t = test_loader.dataset.sp_t
+    EOS_token = token_t.eos_id()
     for x_s, x_t, _ in test_loader:
         with torch.no_grad():
             model.to(device)
@@ -119,6 +120,7 @@ def init_checkpoint(config,checkpoint_path,device):
         "scheduler_state": scheduler.state_dict(),
         "epoch": 0,
         "loss": torch.inf,
+        "bleu":0
     }
     torch.save(checkpoint, checkpoint_path)
 
