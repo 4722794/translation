@@ -22,7 +22,7 @@ model_path = root_path / "saved_models"
 temp_path = root_path / "temp"
 data_path = temp_path / "data"
 checkpoint_path = Path(f"{model_path}/checkpoint.tar")
-train_path, val_path,test_path = data_path / "train/translation.csv", data_path / "val/translation.csv", data_path / "test/translation.csv"
+train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
 source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
 
 with open('config/config.yaml') as f:
@@ -99,4 +99,4 @@ def main(config=None,project=None,name=None,checkpoint=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score_test})
 
-main(config=conf,project="sweepstakes",name="UCL-return leg",checkpoint=checkpoint)
+main(config=conf,project="french",name="UCL-return leg",checkpoint=checkpoint)

@@ -355,7 +355,7 @@ class TranslationDNN(nn.Module):
         out = self.decoder(x_t, all_h_enc)
         return out
 
-    def evaluate(self, x_s, EOS_token,MAXLEN=30):
+    def evaluate(self, x_s, EOS_token=2,MAXLEN=30):
         with torch.no_grad():
             all_hidden_encoder = self.encoder.evaluate(x_s)
             B, _, H = all_hidden_encoder[0].shape

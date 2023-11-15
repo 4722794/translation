@@ -1,3 +1,4 @@
+#%%
 import subprocess
 import multiprocessing
 import argparse
@@ -8,7 +9,6 @@ instance_id = os.getenv("INSTANCE_ID")
 # Add the optional argument
 # parser.add_argument("-s", "--stop", help="Stop Aws", action="store_true")
 # args = parser.parse_args()
-
 
 # Define a function to run a script
 def run_script(script_path):
