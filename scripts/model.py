@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 import torch.optim as optim
 import numpy as np
+import math
 
 # step 2: define encoder
 class EncoderND(nn.Module):
@@ -170,9 +171,12 @@ class DecoderND(nn.Module):
         self.dropout_emb = nn.Dropout(dropout_ratio)
         self.dropout_att = nn.Dropout(dropout_ratio)
         self.dropout_gru = nn.Dropout(dropout_ratio)
+
+        self.layernorm = nn.LayerNorm(H)
         # number of layers param
         self.num_layers = n
         self.register_buffer("hidden_decoder",torch.zeros(1,1,H))
+
 
     def attention_block(self,x,hidden_encoder,layer_num,s_prev=None):
         H = self.base_gru.hidden_size
@@ -199,12 +203,13 @@ class DecoderND(nn.Module):
         x_emb = self.dropout_emb(x_emb)
         B,T,E = x_emb.shape
         skip_h_decoder = self.hidden_decoder.repeat(B,T,1)
+        hidden_decoder = x_emb # writing this just so that I can easily loop through below
         for n in range(self.num_layers):
             hidden_encoder = all_hidden_encoder[n,:,:,:]
-            hidden_decoder = self.attention_block(x_emb,hidden_encoder,n,s_prev)
+            hidden_decoder = self.attention_block(hidden_decoder,hidden_encoder,n,s_prev)
+            hidden_decoder = self.layernorm(hidden_decoder)
+            hidden_decoder = self.dropout_emb(hidden_decoder)
             skip_h_decoder += hidden_decoder
-            x_emb = hidden_decoder
-            x_emb = self.dropout_emb(x_emb)
         out = self.out(skip_h_decoder)
 
         return out
@@ -222,6 +227,7 @@ class DecoderND(nn.Module):
                 hidden_encoder = all_hidden_encoder[n, :, :, :]
                 s_prev = s_prevs[n]
                 hidden_decoder = self.attention_block(x_emb, hidden_encoder, n, s_prev)
+                hidden_decoder = self.layernorm(hidden_decoder)
                 skip_h_decoder += hidden_decoder
                 x_emb = hidden_decoder
                 new_s_prevs.append(hidden_decoder)  # The last state is the s_prev
@@ -376,4 +382,190 @@ class TranslationDNN(nn.Module):
             weights = None
         return outs, weights
 
+
+
+class Head(nn.Module):
+    """ one head of attention """
+
+    def __init__(self, n_embd, head_size,dropout):
+        super().__init__()
+        self.key = nn.Linear(n_embd, head_size, bias=False)
+        self.query = nn.Linear(n_embd, head_size, bias=False)
+        self.value = nn.Linear(n_embd, head_size, bias=False)
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # input of size (batch, time-step, channels)
+        # output of size (batch, time-step, head size)
+        B,T,C = x.shape
+        k = self.key(x)   # (B,T,hs)
+        q = self.query(x) # (B,T,hs)
+        # compute attention scores ("affinities")
+        wei = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5 # (B, T, hs) @ (B, hs, T) -> (B, T, T)
+        wei = F.softmax(wei, dim=-1) # (B, T, T)
+        wei = self.dropout(wei)
+        # perform the weighted aggregation of the values
+        v = self.value(x) # (B,T,hs)
+        out = wei @ v # (B, T, T) @ (B, T, hs) -> (B, T, hs)
+        return out
+
+class MultiHeadAttention(nn.Module):
+    """ multiple heads of self-attention in parallel """
+
+    def __init__(self, n_embd,head_size,num_heads,dropout):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(n_embd, head_size,dropout) for _ in range(num_heads)])
+        self.proj = nn.Linear(head_size * num_heads, n_embd)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.dropout(self.proj(out))
+        return out        
+
+class FeedFoward(nn.Module):
+    """ a simple linear layer followed by a non-linearity """
+
+    def __init__(self, n_embd,dropout):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, 4 * n_embd),
+            nn.ReLU(),
+            nn.Linear(4 * n_embd, n_embd),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x):
+        return self.net(x)    
+
+class Block(nn.Module):
+    """ Transformer block: communication followed by computation """
+
+    def __init__(self, n_embd, n_head,dropout):
+        # n_embd: embedding dimension, n_head: the number of heads we'd like
+        super().__init__()
+        head_size = n_embd // n_head 
+        self.sa = MultiHeadAttention(n_embd,n_head, head_size,dropout)
+        self.ffwd = FeedFoward(n_embd,dropout)
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
+
+    def forward(self, x):
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
+        return x
+
+
+class EncoderX(nn.Module):
+    def __init__(self,vocab_size,token_embd,hidden_size, n_head,n_layer,dropout):
+        super().__init__()
+        # each token directly reads off the logits for the next token from a lookup table
+        self.token_embedding = nn.Embedding(vocab_size, token_embd)
+        # need to create an embedding for higher layers
+        self.base_gru = nn.GRU(token_embd,hidden_size,batch_first=True,bidirectional=True)
+        self.blocks = nn.ModuleList([Block(2*hidden_size,n_head,dropout) for _ in range(n_layer-1)])
+        self.dropout = nn.Dropout(dropout)
+        # registers
+
+        self.register_buffer("hidden_encoder",torch.zeros(n_layer,1,1,2*hidden_size))
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    def forward(self, x):
+        # Define the forward pass here
+        B,T  = x.shape
+        mask_lens = (x != 0).sum(1).to(torch.device("cpu"))
+        emb = self.token_embedding(x)
+        x_pack = pack_padded_sequence(emb,mask_lens,batch_first=True,enforce_sorted=False)
+        all_nh = self.hidden_encoder.repeat(1,B,T,1)
+        all_h_packed,_ = self.base_gru(x_pack)
+        all_h_unpacked,_ = pad_packed_sequence(all_h_packed,batch_first=True)
+        B,T,H2 = all_h_unpacked.shape
+        pos_embedding = self.pos_encoding(B,T,H2)
+        t_encodings = all_h_unpacked + pos_embedding
+        all_nh[0,:,:,:] = self.dropout(all_h_unpacked)
+        for n,block in enumerate(self.blocks,1):
+            t_encodings = block(t_encodings)
+            all_nh[n,:,:,:] = self.dropout(t_encodings) # n,B,T,2H
+        
+        return all_nh
+    
+    def evaluate(self, x):
+        # Define the evaluation method here
+        with torch.no_grad():
+            return self.forward(x)
+  
+    def pos_encoding(self, batch_size,seq_len, d_model):
+        # seq_len is the length of the sequence (T in your forward method)
+        # d_model is the dimension of the model (token_embd in your __init__)
+
+        pos = torch.arange(seq_len).unsqueeze(1)  # shape: [seq_len, 1]
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(seq_len, d_model)
+        pe[:, 0::2] = torch.sin(pos.float() * div_term)
+        pe[:, 1::2] = torch.cos(pos.float() * div_term)
+
+        # pe is the positional encoding matrix with shape [seq_len, d_model]
+        # adding batch dimension and copy for each entry in batch
+        pe = pe.unsqueeze(0).repeat(batch_size, 1, 1)
+
+        return pe
+
+class TranslationDX(nn.Module):
+
+    def __init__(self,V_s,V_t,E,H,num_heads,drop_e,drop_d,n,dot=False):
+        super().__init__()
+        self.encoder = EncoderX(V_s,E,H,num_heads,n,drop_e)
+        self.decoder = DecoderND(V_t,E,H,drop_d,n,dot=dot)
+        
+        # initialize weights
+        self.apply(self._init_weights)
+        # register buffers
+
+        self.register_buffer("x_init", torch.ones(1, 1).long())
+
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    def forward(self, x_s, x_t):
+        all_h_enc = self.encoder(x_s)
+        out = self.decoder(x_t, all_h_enc)
+        return out
+
+    def evaluate(self, x_s, EOS_token=2,MAXLEN=30):
+        with torch.no_grad():
+            all_hidden_encoder = self.encoder.evaluate(x_s)
+            B, _, H = all_hidden_encoder[0].shape
+            H = H // 2
+            x_t = self.x_init.repeat(B, 1)
             
+            s_prevs = [None] * self.decoder.num_layers # daring to pass 'Nones' because I know that in the 'attention_block' code I am creating it if it is None
+            counter = 0
+            outs = torch.zeros(B, MAXLEN).long()
+            
+            while not torch.all(torch.any(outs == EOS_token, dim=1)) and counter < MAXLEN:
+                out, new_s_prevs = self.decoder.evaluate(x_t, all_hidden_encoder, s_prevs)
+                probs = F.softmax(out, dim=-1)
+                x_t = torch.argmax(probs, axis=-1)
+                outs[:, counter] = x_t.squeeze(1)
+                counter += 1
+                s_prevs = new_s_prevs  # Update s_prev for the next step
+            weights = None
+        return outs, weights
+
+

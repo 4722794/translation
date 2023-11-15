@@ -170,3 +170,31 @@ def test_evaluate():
 
 test_evaluate()
 #%%
+import torch
+from model import EncoderX
+
+def test_encoder_x():
+    vocab_size = 100
+    token_embd = 32
+    hidden_size = 64
+    n_head = 8
+    n_layer = 2
+    dropout = 0.5
+    batch_size = 16
+    seq_len = 10
+
+    encoder = EncoderX(vocab_size, token_embd, hidden_size, n_head, n_layer, dropout)
+
+    # Create some random input tensors
+    input_tensor = torch.randint(low=0, high=vocab_size, size=(batch_size, seq_len))
+
+    # Test the forward method
+    output = encoder(input_tensor)
+    assert output.shape == (n_layer, batch_size, seq_len, 2*hidden_size)
+
+    # Test the evaluate method
+    output = encoder.evaluate(input_tensor)
+    assert output.shape == (n_layer, batch_size, seq_len, 2*hidden_size)
+
+test_encoder_x()
+# %%
