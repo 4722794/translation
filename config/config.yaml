@@ -4,9 +4,9 @@ optimizer: adamw
 scheduler: cosine
 dropout: 0.2
 hidden_size: 512
-embedding_size: 256
-learning_rate: 0.001 # now setting it programatically
+embedding_size: 512
+learning_rate: 0.001
 batch_size: 128
-num_epochs: 100
-num_layers: 2
+num_epochs: 200
+num_layers: 4
 dot_product: false
