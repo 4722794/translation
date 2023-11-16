@@ -64,7 +64,7 @@ class TranslationDataset(Dataset):
         if not isinstance(s,pd.Series):
             s = pd.Series(s)
         s = s.str.replace('\u202f|\xa0',' ',regex=False).str.lower()
-        s =  s.str.replace('[^a-zA-Z0-9àâäéèêëîïôöùûüÿç\-!\'?,. ]','',regex=True).str.lower()
+        # s =  s.str.replace('[^a-zA-Z0-9àâäéèêëîïôöùûüÿç\-!\'?,. ]','',regex=True).str.lower()
         return s
     
     def from_sentence(self,datatype,sentence):

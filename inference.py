@@ -15,12 +15,12 @@ import wandb
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # wandb stuff
-project_name = "sweepstakes"
-run_id = ""
+project_name = "french"
+run_id = "diubih39"
 checkpoint_name = f"model-checkpoints-{run_id}:latest"
 
 root_path = Path(__file__).resolve().parents[0]
-data_path = root_path / "data"
+data_path = root_path / "temp/data"
 model_path = root_path / "saved_models"
 checkpoint_path = Path(f"{model_path}/best_run.tar")
 train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
@@ -37,14 +37,14 @@ fields = [(k,type(v)) for k,v in config.items()]
 DotDict = make_dataclass('DotDict',fields)
 c = DotDict(**config)
 
-# check if checkpoint exists
-if not checkpoint_path.exists():
-    raise Exception("No checkpoint found.")
+# # check if checkpoint exists
+# if not checkpoint_path.exists():
+#     raise Exception("No checkpoint found.")
 
 # %%
 train_set,val_set,test_set = get_dataset(train_path,source_tokenizer,target_tokenizer), get_dataset(val_path,source_tokenizer,target_tokenizer), get_dataset(test_path,source_tokenizer,target_tokenizer)
 # get loaders
-train_loader,val_loader,test_loader = get_dataloader(train_set,c.batch_size), get_dataloader(val_set,c.batch_size), get_dataloader(test_set,c.batch_size)
+train_loader,val_loader,test_loader = get_dataloader(train_set,c.batch_size), get_dataloader(val_set,c.batch_size), get_dataloader(test_set,c.batch_size,shuffle=False)
 # get model
 model = get_model(c.vocab_source,c.vocab_target,c.embedding_size,c.hidden_size,c.dropout,c.dropout,c.num_layers,c.dot_product)
 loss_fn = nn.CrossEntropyLoss(reduction="none")
@@ -102,13 +102,13 @@ pred_path = root_path/'machinetranslated.txt'
 groundtruth = root_path/'groundtruth.txt'
 preds_list = []
 actuals_list = []
-EOS_token = test_loader.dataset.eos_id()
+EOS_token = test_loader.dataset.sp_t.eos_id()
 
 for xs,xt,_ in test_loader:
     with torch.no_grad():
         model.to(device)
         xt,xs = xt.to(device),xs.to(device)
-        outs, _ = model.evaluate(xs,EOS_token=EOS_token)
+        outs, _ = model.evaluate(xs,EOS_token=EOS_token,MAXLEN=30)
     preds = token_to_sentence(outs,target_tokenizer)
     preds_list.extend(preds)
     actuals = token_to_sentence(xt,target_tokenizer)
