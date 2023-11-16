@@ -5,3 +5,4 @@
 wandb/*
 temp/*
 saved_models/*
+artifacts/
