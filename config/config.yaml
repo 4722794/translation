@@ -1,12 +1,12 @@
-vocab_source: 5001
-vocab_target: 5001
+vocab_source: 2500
+vocab_target: 5000
 optimizer: adamw
 scheduler: cosine
 dropout: 0.2
 hidden_size: 512
-embedding_size: 256
+embedding_size: 512
 learning_rate: 0.001 # now setting it programatically
 batch_size: 128
-num_epochs: 100
-num_layers: 2
+num_epochs: 200
+num_layers: 4
 dot_product: false

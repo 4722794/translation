@@ -20,8 +20,8 @@ model_path = root_path / "saved_models"
 temp_path = root_path / "temp"
 data_path = temp_path / "data"
 checkpoint_path = Path(f"{model_path}/checkpoint.tar")
-train_path, val_path,test_path = data_path / "train/translations.csv", data_path / "val/translations.csv", data_path / "test/translations.csv"
-source_tokenizer_path, target_tokenizer_path = data_path / "tokenizer_en.model", data_path / "tokenizer_fr.model"
+train_path, val_path,test_path = data_path / "train/returnleg.csv", data_path / "val/returnleg.csv", data_path / "test/returnleg.csv"
+source_tokenizer_path, target_tokenizer_path = data_path / "en.model", data_path / "sp.model"
 
 with open('config/config.yaml') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -88,6 +88,9 @@ def main(config=None,project=None,name=None,checkpoint=None):
                 checkpoint = save_checkpoint(checkpoint_path, model, epoch,val_loss,optim,scheduler,bleu_score_val,run)
             bleu_score_test = get_bleu(model, test_loader, device)
             metrics = {
+                "Training Log/Epoch":epoch,
+                "Training Log/Train Loss":train_loss,
+                "Training Log/Teach Val Loss":val_loss,                
                 "baseplots/epoch": epoch,
                 "baseplots/train_loss": train_loss,
                 "baseplots/val_loss": val_loss,
@@ -97,4 +100,4 @@ def main(config=None,project=None,name=None,checkpoint=None):
             wandb.log(metrics)
         wandb.log({"bleu":bleu_score_test})
 
-main(config=conf,project="french",name="UCL-return leg",checkpoint=checkpoint)
+main(config=conf,project="ucl_return",name="PSGRU-Camp Nou",checkpoint=checkpoint)
