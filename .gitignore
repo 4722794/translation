@@ -8,3 +8,5 @@ claude.md
 .vscode
 deepl
 logs
+transformer-translator-pytorch 
+__pycache__/

@@ -1,6 +1,6 @@
 #! python3
 """
-Inference script for trained translation model.
+Inference script for Transformer model.
 Evaluates BLEU score on held-out test set and generates sample translations.
 """
 
@@ -16,8 +16,8 @@ import sentencepiece as spm
 import evaluate
 
 from scripts.dataset import TranslationDataset
-from scripts.model import TranslationDNN, TranslationNN
-from scripts.utils import token_to_sentence, evaluate_show_attention 
+from scripts.transformer_model import TransformerTranslation
+from scripts.utils import token_to_sentence
 
 
 # %% Setup paths and device
@@ -27,7 +27,7 @@ print(f"Using device: {device}")
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
-checkpoint_path = model_path / "checkpoint.pt"  # Match main.py checkpoint
+checkpoint_path = model_path / "transformer_checkpoint.tar"
 
 # Tokenizer paths
 source_tokenizer_path = data_path / "tokenizer_en.model"
@@ -37,11 +37,11 @@ target_tokenizer_path = data_path / "tokenizer_fr.model"
 test_path = data_path / "test" / "translations.csv"
 
 
-# %% Load config (match training configuration)
+# %% Load config
 with open('config/config.yaml') as f:
-    model_config = yaml.load(f, Loader=yaml.FullLoader)
+    config = yaml.load(f, Loader=yaml.FullLoader)
 
-print(f"Loaded config: {model_config}")
+print(f"Loaded config: {config}")
 
 
 # %% Load tokenizers
@@ -56,7 +56,7 @@ target_tokenizer = get_tokenizer(target_tokenizer_path)
 EOS_token = target_tokenizer.piece_to_id('</s>')  # Should be 2
 
 
-# %% Load test dataset (actual held-out test set)
+# %% Load test dataset
 print(f"\nLoading test set from: {test_path}")
 test_df = pd.read_csv(test_path)
 test_dataset = TranslationDataset(test_df, source_tokenizer, target_tokenizer)
@@ -66,58 +66,42 @@ print(f"Test set size: {len(test_dataset)} examples")
 collate_fn = lambda x: (pad_sequence(i, batch_first=True) for i in x)
 test_loader = DataLoader(
     test_dataset,
-    batch_size=model_config['batch_size'],
-    shuffle=False,  # Don't shuffle test set
+    batch_size=config['batch_size'],
+    shuffle=False,
     collate_fn=collate_fn
 )
 
 
 # %% Load model and checkpoint
 print(f"\nLoading checkpoint from: {checkpoint_path}")
-checkpoint = torch.load(checkpoint_path, map_location=device)
 
-# NOTE: This checkpoint was trained with OLD settings:
-# - Model: TranslationNN (single-layer)
-# - Hidden size: 64 (not 512 from config!)
-# - Embedding: 128
-# We need to use the architecture that matches the checkpoint, not config.yaml
-
-print("\n⚠️  WARNING: Using TranslationNN (single-layer, H=64) to match checkpoint")
-print("   Current config.yaml has different settings but checkpoint dictates architecture")
-
-# Initialize model with same architecture as the checkpoint was trained with
-model = TranslationNN(
-    V_s=5001,           # vocab_source
-    V_t=5001,           # vocab_target
-    E=128,              # embedding_size
-    H=64,               # hidden_size (from checkpoint, NOT config!)
-    drop_e=0.0,         # No dropout during inference
-    drop_d=0.0
+# Initialize Transformer model
+model = TransformerTranslation(
+    src_vocab_size=config['vocab_source'],
+    tgt_vocab_size=config['vocab_target'],
+    d_model=config.get('d_model', 512),
+    num_heads=config.get('num_heads', 8),
+    num_layers=config['num_layers'],
+    d_ff=config.get('d_ff', 2048),
+    dropout=0.0,  # No dropout during inference
+    max_len=512
 )
 
-# load model from config again
+# Load checkpoint if exists
+if checkpoint_path.exists():
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["nn_state"], strict=False)
+    print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
+    print(f"Best validation loss: {checkpoint['loss']:.4f}")
+else:
+    print(f"⚠️  WARNING: No checkpoint found at {checkpoint_path}")
+    print("Using randomly initialized model")
 
-# model = TranslationNN(
-#     V_s=model_config['vocab_source'],
-#     V_t=model_config['vocab_target'],
-#     E=model_config['embedding_size'],
-#     H=model_config['hidden_size'],
-#     drop_e=model_config['dropout'],
-#     drop_d=model_config['dropout'],
-# )
-# Load trained weights
-# Note: strict=False allows missing buffers (x_init, hidden_decoder)
-# which are just initialization values, not learned parameters
-model.load_state_dict(checkpoint["nn_state"], strict=False)
 model.to(device)
-model.eval()  # Set to evaluation mode
-
-print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
-print(f"Best validation loss: {checkpoint['loss']:.4f}")
+model.eval()
 
 
-# %% Evaluate 
-# BLEU score on test set
+# %% Evaluate - BLEU score on test set
 print("\n" + "="*60)
 print("EVALUATING ON TEST SET")
 print("="*60)
@@ -184,5 +168,4 @@ with torch.no_grad():
 for i, (src, pred) in enumerate(zip(source_sentences, preds), 1):
     print(f"{i:2d}. EN: {src}")
     print(f"    FR: {pred}")
-    print() 
-# %%
+    print()
