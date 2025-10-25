@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from torch.optim.lr_scheduler import _LRScheduler
 import numpy as np
-from tqdm.auto import tqdm
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 # need attention maps
 
 # attention stuff
@@ -103,11 +103,11 @@ def log_loss(loss,iteration,epoch,train=True):
         print(f'{prefix.capitalize()} loss after {iteration} iterations is {loss.item():.4f}')
 
 
-def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device):
+def train_loop(model, loader, loss_fn, optim, scheduler, epoch, device, progress=None, task_id=None):
     model.to(device)
     model.train()
     loss_tensor = torch.zeros(len(loader))
-    for c, batch in tqdm(enumerate(loader)):
+    for c, batch in enumerate(loader):
         loss = forward_pass(batch, model, loss_fn, device)
         # backprop step
         optim.zero_grad()
@@ -120,9 +120,14 @@ def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device):
         iteration = len(loader)*epoch + c
         log_loss(loss,iteration,epoch)
         loss_tensor[c] = loss.item()
+
+        # Update progress bar if provided
+        if progress is not None and task_id is not None:
+            progress.update(task_id, advance=1, description=f"[cyan]Training[/cyan] - Loss: {loss.item():.4f}")
+
     return loss_tensor.mean()
 
-def valid_loop( model, loader,loss_fn, device):
+def valid_loop(model, loader, loss_fn, device, progress=None, task_id=None):
     model.to(device)
     model.eval()
     loss_tensor = torch.zeros(len(loader))
@@ -130,6 +135,11 @@ def valid_loop( model, loader,loss_fn, device):
         with torch.inference_mode():
             loss = forward_pass(batch, model, loss_fn, device)
         loss_tensor[c] = loss.item()
+
+        # Update progress bar if provided
+        if progress is not None and task_id is not None:
+            progress.update(task_id, advance=1, description=f"[blue]Validation[/blue] - Loss: {loss.item():.4f}")
+
     return loss_tensor.mean()
 
 

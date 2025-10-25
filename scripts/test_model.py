@@ -1,6 +1,6 @@
 #%%
 import torch
-from model import MultiDot
+from .model import MultiDot
 
 def test_multi_dot():
     hidden_size = 64
@@ -20,7 +20,7 @@ def test_multi_dot():
 
 test_multi_dot()
 #%%import torch
-from model import EncoderND
+from .model import EncoderND
 
 def test_encoder_nd():
     vocab_size = 100
@@ -42,7 +42,7 @@ def test_encoder_nd():
 
 test_encoder_nd()
 #%%import torch
-from model import DecoderND
+from .model import DecoderND
 
 def test_decoder_nd():
     vocab_size = 100 # V
@@ -88,7 +88,7 @@ test_decoder_nd()
 # test_evaluate()
 # %%
 # new macdonald
-from model import TranslationDNN
+from .model import TranslationDNN
 
 def test_translation_dnn():
     vocab_size_s = 100 #V_s
@@ -113,13 +113,13 @@ def test_translation_dnn():
 
     # Test the evaluate method
     output = model.evaluate(x_s)
-    assert output.shape == (batch_size, 30)
+    assert output[0].shape == (batch_size, 30)
 
 test_translation_dnn()
 
 # %%
 import torch
-from model import TranslationDNN
+from .model import TranslationDNN
 
 def test_translation_dnn():
     vocab_size_s = 100
@@ -143,12 +143,12 @@ def test_translation_dnn():
     # Test the evaluate method
     x_s = torch.randint(low=0, high=vocab_size_s, size=(batch_size, seq_len_s))
     output = model.evaluate(x_s)
-    assert output.shape == (batch_size, 30)
+    assert output[0].shape == (batch_size, 30)
 
 test_translation_dnn()
 #%%
 import torch
-from model import TranslationDNN
+from .model import TranslationDNN
 
 def test_evaluate():
     vocab_size_s = 100 # Vs,Vt
@@ -166,7 +166,7 @@ def test_evaluate():
 
     # Test the evaluate method
     output = model.evaluate(x_s)
-    assert output.shape == (batch_size, 30)
+    assert output[0].shape == (batch_size, 30)
 
 test_evaluate()
 #%%

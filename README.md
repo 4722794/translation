@@ -19,3 +19,17 @@ Current progress
 
 Pending
 - introduce sweeps
+
+└─ deepl/
+   ├─ training/
+   │  ├─ __init__.py
+   │  ├─ model.py
+   │  ├─ train.py
+   │  └─ README.md
+   ├─ testing/
+   │  ├─ __init__.py
+   │  └─ bleu_score.py
+   └─ inference/
+      ├─ __init__.py
+      ├─ infer.py
+      └─ README.md

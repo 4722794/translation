@@ -5,3 +5,6 @@
 temp/*
 saved_models/*
 claude.md
+.vscode
+deepl
+logs
