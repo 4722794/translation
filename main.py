@@ -110,14 +110,14 @@ def main(config=None,checkpoint=None):
     # loss fn
     loss_fn = nn.CrossEntropyLoss(reduction="none")
 
-    # # Check resource usage and optimize batch size (optional, uncomment to use)
-    # final_batch_size = check_resource_usage(model, train_loader, loss_fn, device, config['batch_size'])
-    # if final_batch_size != config['batch_size']:
-    #     config['batch_size'] = final_batch_size
-    #     train_loader = get_dataloader(train_set, final_batch_size)
-    #     val_loader = get_dataloader(val_set, final_batch_size)
-    #     test_loader = get_dataloader(test_set, final_batch_size)
-    #     log.info(f"[bold green]Updated batch size to: {final_batch_size}[/bold green]", extra={"markup": True})
+    # Check resource usage and optimize batch size (optional, uncomment to use)
+    final_batch_size = check_resource_usage(model, train_loader, loss_fn, device, config['batch_size'])
+    if final_batch_size != config['batch_size']:
+        config['batch_size'] = final_batch_size
+        train_loader = get_dataloader(train_set, final_batch_size)
+        val_loader = get_dataloader(val_set, final_batch_size)
+        test_loader = get_dataloader(test_set, final_batch_size)
+        log.info(f"[bold green]Updated batch size to: {final_batch_size}[/bold green]", extra={"markup": True})
 
     # training loop
     num_epochs = config['num_epochs']
