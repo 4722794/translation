@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from torch.optim.lr_scheduler import _LRScheduler
 import numpy as np
-import wandb
 from tqdm.auto import tqdm
 # need attention maps
 
@@ -99,10 +98,9 @@ def forward_pass(batch, model, loss_fn, device):
 
 
 def log_loss(loss,iteration,epoch,train=True):
-    prefix = 'train' if train else 'val'
-    wandb.log({f"iterplots/{prefix}loss":loss.item(),"iterplots/iteration":iteration,"iterplots/epoch":epoch})
     if iteration % 100 == 0:
-        print(f'Loss after {iteration} iterations is {loss.item():.4f}')
+        prefix = 'train' if train else 'val'
+        print(f'{prefix.capitalize()} loss after {iteration} iterations is {loss.item():.4f}')
 
 
 def train_loop(model,loader, loss_fn, optim, scheduler, epoch,device):
@@ -198,8 +196,6 @@ def save_checkpoint(checkpoint_path,model, epoch, loss, optimizer, scheduler):
 
 
 def train(model,loader,val_loader,loss_fn,optimizer,scheduler,config,device):
-    wandb.watch(model,loss_fn,log="all",log_freq=10)
-
     num_epochs = 20000/ len(loader) # 20000 rougly corresponds to 5 epochs if batch size is 512
     for epoch in range(num_epochs):
         for c,batch in enumerate(loader):

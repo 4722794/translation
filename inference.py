@@ -1,139 +1,154 @@
 #! python3
-# %%
+"""
+Inference script for trained translation model.
+Evaluates BLEU score on held-out test set and generates sample translations.
+"""
+
+# %% Imports
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
-import torch.nn.init as init
-from torch.utils.data import DataLoader, random_split, SubsetRandomSampler, BatchSampler
-
-from torch.optim import Adam, AdamW
-from torch.nn.utils import clip_grad_norm_
+from torch.utils.data import DataLoader
 import pandas as pd
 from pathlib import Path
-from scripts.dataset import (
-    TranslationDataset,
-)  # The logic of TranslationDataset is defined in the file dataset.py
-from scripts.model import TranslationNN
-from scripts.utils import calculate_bleu_score, valid_loop, evaluate_show_attention,token_to_sentence
-import wandb
-from dotenv import load_dotenv
-import os
+import yaml
+import sentencepiece as spm
 import evaluate
 
+from scripts.dataset import TranslationDataset
+from scripts.model import TranslationDNN, TranslationNN
+from scripts.utils import token_to_sentence, evaluate_show_attention 
 
-# %%
+
+# %% Setup paths and device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 root_path = Path(__file__).resolve().parents[0]
 data_path = root_path / "data"
 model_path = root_path / "saved_models"
-checkpoint_path = Path(f"{model_path}/dropouts_checkpoint.tar")
+checkpoint_path = model_path / "checkpoint.pt"  # Match main.py checkpoint
 
-df = pd.read_csv(f"{data_path}/fra-eng.csv")
-dataset = TranslationDataset(df, from_file=True)
+# Tokenizer paths
+source_tokenizer_path = data_path / "tokenizer_en.model"
+target_tokenizer_path = data_path / "tokenizer_fr.model"
 
-config = dict(
-    epochs=100,
-    batch_size=512,
-    vocab_source=5001,
-    vocab_target=5001,
-    embedding_size=256,
-    hidden_size=256,
-    device=device,
-    lr=1e-3,
-)
-
-model = TranslationNN(
-    config["vocab_source"],
-    config["vocab_target"],
-    config["embedding_size"],
-    config["hidden_size"],
-)
-model.to(device)
+# Test data path
+test_path = data_path / "test" / "translations.csv"
 
 
-# %%
-# instantiate params
-model = TranslationNN(
-    config["vocab_source"],
-    config["vocab_target"],
-    config["embedding_size"],
-    config["hidden_size"],
-)
-model.to(device)
+# %% Load config (match training configuration)
+with open('config/config.yaml') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
 
-loss_fn = nn.CrossEntropyLoss(reduction="none")
+print(f"Loaded config: {config}")
 
-checkpoint = torch.load(checkpoint_path, map_location=device)
-# load checkpoint details
-model.load_state_dict(checkpoint["nn_state"])
-epoch = checkpoint["epoch"]
-loss = checkpoint["loss"]
-# %%
-# make dataloaders
+
+# %% Load tokenizers
+def get_tokenizer(tokenizer_path):
+    token = spm.SentencePieceProcessor()
+    token.Load(str(tokenizer_path))
+    return token
+
+source_tokenizer = get_tokenizer(source_tokenizer_path)
+target_tokenizer = get_tokenizer(target_tokenizer_path)
+
+EOS_token = target_tokenizer.piece_to_id('</s>')  # Should be 2
+
+
+# %% Load test dataset (actual held-out test set)
+print(f"\nLoading test set from: {test_path}")
+test_df = pd.read_csv(test_path)
+test_dataset = TranslationDataset(test_df, source_tokenizer, target_tokenizer)
+print(f"Test set size: {len(test_dataset)} examples")
+
+# Create dataloader
 collate_fn = lambda x: (pad_sequence(i, batch_first=True) for i in x)
-train_set, valid_set, test_set = random_split(
-    dataset, [0.9, 0.05, 0.05], generator=torch.Generator().manual_seed(4722794)
-)
-train_sampler, val_sampler = BatchSampler(
-    SubsetRandomSampler(train_set.indices),
-    batch_size=config["batch_size"],
-    drop_last=True,
-), BatchSampler(
-    SubsetRandomSampler(valid_set.indices),
-    batch_size=config["batch_size"],
-    drop_last=True,
-)
-test_sampler = BatchSampler(
-    SubsetRandomSampler(test_set.indices),
-    batch_size=config["batch_size"],
-    drop_last=True,
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=config['batch_size'],
+    shuffle=False,  # Don't shuffle test set
+    collate_fn=collate_fn
 )
 
-train_loader = DataLoader(
-    dataset,
-    batch_sampler=train_sampler,
-    collate_fn=collate_fn,
+
+# %% Load model and checkpoint
+print(f"\nLoading checkpoint from: {checkpoint_path}")
+checkpoint = torch.load(checkpoint_path, map_location=device)
+
+# NOTE: This checkpoint was trained with OLD settings:
+# - Model: TranslationNN (single-layer)
+# - Hidden size: 64 (not 512 from config!)
+# - Embedding: 128
+# We need to use the architecture that matches the checkpoint, not config.yaml
+
+print("\n⚠️  WARNING: Using TranslationNN (single-layer, H=64) to match checkpoint")
+print("   Current config.yaml has different settings but checkpoint dictates architecture")
+
+# Initialize model with same architecture as the checkpoint was trained with
+model = TranslationNN(
+    V_s=5001,           # vocab_source
+    V_t=5001,           # vocab_target
+    E=128,              # embedding_size
+    H=64,               # hidden_size (from checkpoint, NOT config!)
+    drop_e=0.0,         # No dropout during inference
+    drop_d=0.0
 )
-val_loader = DataLoader(
-    dataset,
-    batch_sampler=val_sampler,
-    collate_fn=collate_fn,
-)
-test_loader = DataLoader(dataset, batch_sampler=test_sampler, collate_fn=collate_fn)
+
+# Load trained weights
+# Note: strict=False allows missing buffers (x_init, hidden_decoder)
+# which are just initialization values, not learned parameters
+model.load_state_dict(checkpoint["nn_state"], strict=False)
+model.to(device)
+model.eval()  # Set to evaluation mode
+
+print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
+print(f"Best validation loss: {checkpoint['loss']:.4f}")
 
 
-# %%
-# check the loss ball park
-eval_loss =  torch.zeros(len(val_loader))
-eval_loss = valid_loop(val_loader, model, loss_fn, eval_loss, device)
-# get the averaged validation loss
-eval_loss = eval_loss.mean()
-print(f"Validation Loss for Epoch {epoch+1} is {eval_loss:.4f} \n stored value is {loss:.4f}")
+# %% Evaluate 
+# BLEU score on test set
+print("\n" + "="*60)
+print("EVALUATING ON TEST SET")
+print("="*60)
 
+bleu = evaluate.load("bleu")
+preds_list = []
+actuals_list = []
 
-# %%
-EOS_token =2
-scores = []
-for x_s, x_t, y in test_loader:
-    with torch.no_grad():
-        model.to(device)
+print("Generating translations...")
+with torch.no_grad():
+    for x_s, x_t, _ in test_loader:
         x_s, x_t = x_s.to(device), x_t.to(device)
+
+        # Generate translations
         outs, _ = model.evaluate(x_s)
-    score = calculate_bleu_score(
-        outs, x_t, dataset, EOS_token, device=device
-    )
-    scores.append(score)
-mean_score = torch.tensor(scores).mean()
-print(f'BLEU score is {100*mean_score:.4f}')
-# %%
-# sample inference
+
+        # Convert token IDs to text
+        preds = token_to_sentence(outs, target_tokenizer)
+        actuals = token_to_sentence(x_t, target_tokenizer)
+
+        preds_list.extend(preds)
+        actuals_list.extend(actuals)
+
+# Compute BLEU score
+references = [[actual] for actual in actuals_list]
+score = bleu.compute(predictions=preds_list, references=references)
+
+print(f"\n✓ Test set BLEU score: {100*score['bleu']:.4f}")
+print(f"  (Evaluated on {len(preds_list)} held-out test examples)")
+
+
+# %% Sample translations on custom sentences
+print("\n" + "="*60)
+print("SAMPLE TRANSLATIONS")
+print("="*60)
 
 source_sentences = [
     "Can you walk?",
     "What is love?",
     "I am very happy",
-    "Can you give me a cheese omlette?",
+    "Can you give me a cheese omelette?",
     "I dream in french.",
     "I saw you cooking.",
     "He says he met my mother.",
@@ -146,47 +161,17 @@ source_sentences = [
     "I only eat the vegetables that I grow myself.",
 ]
 
-x_test = dataset.from_sentence_list('source',source_sentences)
+# Prepare input
+x_test = test_dataset.from_sentence_list('source', source_sentences)
 
-outs,weights = model.evaluate(x_test)
+# Generate translations
+print("\nGenerating translations for sample sentences...\n")
+with torch.no_grad():
+    outs, weights = model.evaluate(x_test)
+    preds = token_to_sentence(outs, target_tokenizer)
 
-
-preds = token_to_sentence(outs,dataset,EOS_token) 
-
-# %%
-eg_sent = source_sentences[-1]
-
-
-evaluate_show_attention(model,eg_sent,dataset,EOS_token)
-#%%
-
-# save files for measure
-bleu = evaluate.load("bleu") 
-pred_path = root_path/'mt.txt'
-groundtruth = root_path/'groundtruth.txt'
-preds_list = []
-actuals_list = []
-
-for xs,xt,_ in test_loader:
-    with torch.no_grad():
-        model.to(device)
-        xt,xs = xt.to(device),xs.to(device)
-        outs, _ = model.evaluate(xs)
-    preds = token_to_sentence(outs,dataset,EOS_token)
-    preds_list.extend(preds)
-    actuals = token_to_sentence(xt,dataset,EOS_token)
-    actuals_list.extend(actuals)
-
-# with open(pred_path,'w') as f:
-#     f.writelines('\n'.join(preds_list))
-
-# with open(groundtruth,'w') as f:
-#     f.writelines('\n'.join(actuals_list))
-
-# %%
-predictions = preds_list
-references = [[i] for i in actuals_list]
-# %
-score = bleu.compute(predictions=predictions,references=references)
-print(f"BLEU score is {100*score['bleu']:.4f}")
-# %%
+# Display results
+for i, (src, pred) in enumerate(zip(source_sentences, preds), 1):
+    print(f"{i:2d}. EN: {src}")
+    print(f"    FR: {pred}")
+    print() 

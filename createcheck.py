@@ -1,23 +1,14 @@
 #! python3
 # %%
 import torch
-import torch.nn as nn
-from torch.optim import Adam, AdamW
-from torch.nn.utils import clip_grad_norm_
-import pandas as pd
 from pathlib import Path
-from scripts.dataset import (
-    TranslationDataset,
-)
 
-import wandb
 from dotenv import load_dotenv
-import os,yaml
-from setup import get_tokenizer,get_dataset,get_dataloader,get_model,get_optimizer,get_scheduler
+import yaml
+from setup import get_tokenizer,get_model,get_optimizer,get_scheduler
 load_dotenv()
 from dataclasses import make_dataclass
 
-api_key = os.getenv("WANDB_API_KEY")
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

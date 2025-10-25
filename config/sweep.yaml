@@ -1,6 +1,0 @@
-method: random
-metric:
-    name: BLEU
-    goal: maximize
-parameters:
-    
