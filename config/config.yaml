@@ -11,5 +11,5 @@ embedding_size: 128 # heuristic choice
 dot_product: false # heuristic choice
 
 learning_rate: 0.001 # personal choice
-batch_size: 64 # personal choice
+batch_size: 128 # personal choice
 num_layers: 4 # personal choice

@@ -97,8 +97,8 @@ def get_scheduler(optimizer, scheduler_name):
 
 def get_bleu(model, test_loader, device):
     preds_list, actuals_list = list(), list()
-    bleu = evaluate.load('bleu')
     token_t = test_loader.dataset.sp_t
+
     for x_s, x_t, _ in test_loader:
         with torch.no_grad():
             model.to(device)
@@ -108,12 +108,23 @@ def get_bleu(model, test_loader, device):
         actuals = token_to_sentence(x_t, token_t)
         preds_list.extend(preds)
         actuals_list.extend(actuals)
+
     predictions = preds_list
     references = [[i] for i in actuals_list]
+
     try:
+        # Try using evaluate library first
+        bleu = evaluate.load('bleu')
         score = bleu.compute(predictions=predictions, references=references)['bleu']
-    except ZeroDivisionError:
-        score = 0
+    except (FileNotFoundError, Exception):
+        # Fallback: use sacrebleu directly
+        try:
+            import sacrebleu
+            score = sacrebleu.corpus_bleu(predictions, [actuals_list]).score / 100.0
+        except:
+            # Last resort: return 0
+            score = 0.0
+
     return score
 
 #%%
